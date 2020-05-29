@@ -9,7 +9,7 @@
 #' ## Sample a report delay as a lognormal
 #' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
 #'                                       sd = 3, sd_sd = 1, max_value = 30,
-#'                                        samples = 2)
+#'                                        samples = 1)
 #'                                       
 #' 
 #' ## Sample a incubation period (again using the default for covid)
@@ -17,7 +17,7 @@
 #'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
 #'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
 #'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-#'                                           max_value = 30, samples = 2)
+#'                                           max_value = 30, samples = 1)
 #'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
@@ -114,10 +114,18 @@ nowcast <- function(reported_cases, family = "poisson",
   ##Drop median generation interval initial values
   shifted_reported_cases <- shifted_reported_cases[-(1:generation_interval)]
   reported_cases <- reported_cases[-(1:generation_interval)]
-  
+
+
+# Add week day info -------------------------------------------------------
+
+  reported_cases <- reported_cases[, weekday := lubridate::wday(date)][,
+                                     `:=`(wkd = ifelse(weekday >= 6, 1, 0),
+                                          mon = ifelse(weekday == 1, 1, 0))]
 # Define stan model parameters --------------------------------------------
 
   data <- list(
+    wkd = reported_cases$wkd, 
+    mon = reported_cases$mon,
     cases = reported_cases$confirm,
     shifted_cases = shifted_reported_cases$confirm,
     delay = delay_cdfs,

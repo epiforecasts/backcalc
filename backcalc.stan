@@ -3,6 +3,8 @@ data {
   int d; 
   int inc; 
   int samples;
+  int wkd[t];
+  int mon[t];
   int <lower = 0> cases[t];
   real <lower = 0> shifted_cases[t]; 
   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
@@ -11,13 +13,19 @@ data {
 }
 
 parameters{
-  real<lower = 0> infections[t];
   real <lower = 0> noise[t];
+  real wkd_eff;
+  real mon_eff;
 }
 
 transformed parameters {
+  real<lower = 0> infections[t];
   real<lower = 0> onsets[samples, t];
   real<lower = 0> reports[samples, t];
+  
+  for (s in 1:t) {
+     infections[t] = shifted_cases[t] * noise[t];
+  }
   
   for(h in 1:samples) {
      for (s in 1:t){
@@ -37,14 +45,19 @@ transformed parameters {
 }
 
 model {
-
+  real adj_reports[t];
+  wkd_eff ~ normal(0, 0.01);
+  mon_eff ~ normal(0, 0.01);
+  
   for (i in 1:t) {
-    noise[t] ~ normal(0, 0.1) T[0,];
-    infections[t] ~ normal(shifted_cases[t], shifted_cases[t] * noise[t]) T[0,];
+    noise[i] ~ normal(1, 0.05) T[0,];
   }
   
   for (h in 1:samples) {
-    target += poisson_lpmf(cases | reports[h, 1:t]);
+    for (s in 1:t) {
+      adj_reports[s] = reports[h, s] * ((wkd_eff * wkd[s]) + (mon_eff * mon[s]));
+    }
+    target += poisson_lpmf(cases | adj_reports);
   }
 
 }
