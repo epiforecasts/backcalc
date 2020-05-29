@@ -1,6 +1,8 @@
 #' @export
 #' @importFrom rstan sampling extract
-#' @importFrom data.table copy merge.data.table setorder rbindlist
+#' @importFrom data.table copy merge.data.table setorder rbindlist setDTthreads
+#' @importFrom purrr
+#' @importFrom lubridate wday
 #' @examples
 #' reported_cases <- NCoVUtils::get_ecdc_cases(countries = "Austria")
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
