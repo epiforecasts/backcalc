@@ -65,7 +65,7 @@ simulated_cases
 ```
     
     
-* Fit model and compare to simulated data and ability to recover reporting effects.
+* Fit model and compare to simulated data (+ to current sampling) and ability to recover reporting effects.
 
 * Fit to observed data: Austria (see `nowcast.R`) example.
 

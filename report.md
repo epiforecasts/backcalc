@@ -83,20 +83,20 @@ simulated_cases
 ```
 
     ##            date cases reference
-    ##   1: 2020-03-02    40 infection
-    ##   2: 2020-03-03    43 infection
-    ##   3: 2020-03-04    85 infection
-    ##   4: 2020-03-05    77 infection
-    ##   5: 2020-03-06    96 infection
+    ##   1: 2020-03-02    53 infection
+    ##   2: 2020-03-03    59 infection
+    ##   3: 2020-03-04    79 infection
+    ##   4: 2020-03-05   107 infection
+    ##   5: 2020-03-06   131 infection
     ##  ---                           
-    ## 126: 2020-04-10  1611    report
-    ## 127: 2020-04-11  1585    report
-    ## 128: 2020-04-12  1735    report
-    ## 129: 2020-04-13  1465    report
-    ## 130: 2020-04-14  1449    report
+    ## 128: 2020-04-10  2258    report
+    ## 129: 2020-04-11  2119    report
+    ## 130: 2020-04-12  2252    report
+    ## 131: 2020-04-13  2016    report
+    ## 132: 2020-04-14  1910    report
 
-  - Fit model and compare to simulated data and ability to recover
-    reporting effects.
+  - Fit model and compare to simulated data (+ to current sampling) and
+    ability to recover reporting effects.
 
   - Fit to observed data: Austria (see `nowcast.R`) example.
 
