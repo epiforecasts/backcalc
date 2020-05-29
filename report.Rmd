@@ -12,6 +12,8 @@ output: github_document
 
 ## Methods
 
+* Orginal implementation here: https://github.com/jhellewell14/rtconfirm/blob/master/R/backcalc.R
+
 * Packages
 
 ```{r}
@@ -58,3 +60,5 @@ simmulated_cases
 ## Results
 
 ## Discussion
+
+## References

@@ -1,6 +1,6 @@
 #' @export
 #' @importFrom rstan sampling extract
-#' @importFrom data.table copy merge.data.table setorder
+#' @importFrom data.table copy merge.data.table setorder rbindlist
 #' @examples
 #' reported_cases <- NCoVUtils::get_ecdc_cases(countries = "Austria")
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
@@ -9,7 +9,7 @@
 #' ## Sample a report delay as a lognormal
 #' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
 #'                                       sd = 3, sd_sd = 1, max_value = 30,
-#'                                        samples = 1)
+#'                                        samples = 10)
 #'                                       
 #' 
 #' ## Sample a incubation period (again using the default for covid)
@@ -17,7 +17,7 @@
 #'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
 #'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
 #'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-#'                                           max_value = 30, samples = 1)
+#'                                           max_value = 30, samples = 10)
 #'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
@@ -143,10 +143,16 @@ nowcast <- function(reported_cases, family = "poisson",
     data$model_type <- 2
   }
   
+
+# Set up initial conditions fn --------------------------------------------
+
+init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
+                            wkd_eff = rnorm(1, 0, 0.1),
+                            mon_eff = rnorm(1, 0, 0.1))}
   
 # Load and run the stan model ---------------------------------------------
 
-  model <- rstan::stan_model("backcalc.stan")
+  model <- rstan::stan_model("nowcast.stan")
   
   if (verbose) {
     message(paste0("Running for ",data$samples," samples"))
@@ -156,6 +162,7 @@ nowcast <- function(reported_cases, family = "poisson",
   fit <- rstan::sampling(model,
                          data = data,
                          chains = 4,
+                         init = init_fun,
                          iter = 2000, 
                          cores = 4,
                          refresh = ifelse(verbose, 50, 0))

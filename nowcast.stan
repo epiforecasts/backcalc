@@ -24,20 +24,20 @@ transformed parameters {
   real<lower = 0> reports[samples, t];
   
   for (s in 1:t) {
-     infections[t] = shifted_cases[t] * noise[t];
+     infections[s] = shifted_cases[s] * noise[s];
   }
   
   for(h in 1:samples) {
      for (s in 1:t){
        onsets[h, s] = 0;
-        for(i in 0:(min((s - 1), inc - 1))){
+        for(i in 0:(min(s - 1, inc - 1))){
             onsets[h, s] += infections[s - i] * incubation[h, i + 1];
         }
      }
     
     for (s in 1:t){
       reports[h, s] = 0;
-        for(i in 0:(min((s - 1), d - 1))){
+        for(i in 0:(min(s - 1, d - 1))){
              reports[h, s] += onsets[h, s - i] * delay[h, i + 1];
         }
      }
@@ -46,17 +46,18 @@ transformed parameters {
 
 model {
   real adj_reports[t];
-  wkd_eff ~ normal(0, 0.01);
-  mon_eff ~ normal(0, 0.01);
+  wkd_eff ~ normal(0, 0.1);
+  mon_eff ~ normal(0, 0.1);
   
   for (i in 1:t) {
-    noise[i] ~ normal(1, 0.05) T[0,];
+    noise[i] ~ normal(1, 0.1) T[0,];
   }
   
   for (h in 1:samples) {
     for (s in 1:t) {
-      adj_reports[s] = reports[h, s] * ((wkd_eff * wkd[s]) + (mon_eff * mon[s]));
+      adj_reports[s] = reports[h, s] * (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
     }
+    
     target += poisson_lpmf(cases | adj_reports);
   }
 
