@@ -35,7 +35,7 @@ transformed parameters {
         }
      }
     
-    for (s in 1:t){
+   for (s in 1:t){
       reports[h, s] = 0;
         for(i in 0:(min(s - 1, d - 1))){
              reports[h, s] += onsets[h, s - i] * delay[h, i + 1];
@@ -50,7 +50,7 @@ model {
   mon_eff ~ normal(0, 0.1);
   
   for (i in 1:t) {
-    noise[i] ~ normal(1, 0.1) T[0,];
+    noise[i] ~ normal(1, 0.2) T[0,];
   }
   
   for (h in 1:samples) {
