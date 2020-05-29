@@ -10,8 +10,8 @@
 #'   
 #' ## Sample a report delay as a lognormal
 #' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
-#'                                       sd = 3, sd_sd = 1, max_value = 30,
-#'                                        samples = 1)
+#'                                        sd = 2, sd_sd = 1, max_value = 30,
+#'                                        samples = 1, to_log = TRUE)
 #'                                       
 #' 
 #' ## Sample a incubation period (again using the default for covid)
@@ -157,8 +157,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
   model <- rstan::stan_model("nowcast.stan")
   
   if (verbose) {
-    message(paste0("Running for ",data$samples," samples"))
-    message(paste0("and ", data$t," time steps..."))
+    message(paste0("Running for ",data$samples," samples and ", data$t," time steps"))
   }
   
   fit <- rstan::sampling(model,

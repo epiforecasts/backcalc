@@ -64,7 +64,7 @@ generation_interval <- rowMeans(EpiNow::covid_generation_times)
 ## Sample a report delay as a lognormal
 delay_def <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
                                       sd = 3, sd_sd = 1, max_value = 30,
-                                       samples = 1)
+                                      samples = 1, to_log = TRUE)
 
 
 ## Sample a incubation period (again using the default for covid)
@@ -83,17 +83,17 @@ simulated_cases
 ```
 
     ##            date cases reference
-    ##   1: 2020-03-02    33 infection
-    ##   2: 2020-03-03    56 infection
-    ##   3: 2020-03-04    71 infection
-    ##   4: 2020-03-05    82 infection
-    ##   5: 2020-03-06    95 infection
+    ##   1: 2020-03-02    40 infection
+    ##   2: 2020-03-03    43 infection
+    ##   3: 2020-03-04    85 infection
+    ##   4: 2020-03-05    77 infection
+    ##   5: 2020-03-06    96 infection
     ##  ---                           
-    ## 127: 2020-04-10  1017    report
-    ## 128: 2020-04-11  1051    report
-    ## 129: 2020-04-12  1194    report
-    ## 130: 2020-04-13  1042    report
-    ## 131: 2020-04-14  1097    report
+    ## 126: 2020-04-10  1611    report
+    ## 127: 2020-04-11  1585    report
+    ## 128: 2020-04-12  1735    report
+    ## 129: 2020-04-13  1465    report
+    ## 130: 2020-04-14  1449    report
 
   - Fit model and compare to simulated data and ability to recover
     reporting effects.
