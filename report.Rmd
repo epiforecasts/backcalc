@@ -1,0 +1,21 @@
+---
+title: "Evaluating approaches to backcalculating cases counts by date of infection from cases counts by date of report"
+output: github_document
+---
+
+**Authors:** EpiForecasts, CMMID Covid working group, Sebastian Funk
+
+
+## Summary
+
+## Introduction
+
+## Methods
+
+
+* Simulate data
+
+
+## Results
+
+## Discussion
