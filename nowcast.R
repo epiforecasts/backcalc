@@ -12,7 +12,7 @@
 #' ## Sample a report delay as a lognormal
 #' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
 #'                                        sd = 2, sd_sd = 1, max_value = 30,
-#'                                        samples = 1, to_log = TRUE)
+#'                                        samples = 100, to_log = TRUE)
 #'                                       
 #' 
 #' ## Sample a incubation period (again using the default for covid)
@@ -20,21 +20,23 @@
 #'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
 #'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
 #'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-#'                                           max_value = 30, samples = 1)
+#'                                           max_value = 30, samples = 100)
 #'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
 #'                                      
-#'  disp_prior <- list(mean = 0.1, sd = 0.1)
-#'  family<- "poisson"
-#'  include_fit <- TRUE
-#'  verbose <- TRUE
+#' out <- nowcast(reported_cases, family = "poisson",
+#'                delay_defs = delay_defs, incubation_defs = incubation_defs,
+#'                generation_interval = generation_interval,
+#'                include_fit = TRUE, verbose = TRUE, batch = FALSE) 
+#'                
+#' out                                   
 nowcast <- function(reported_cases, family = "poisson",
                     delay_defs,
                     incubation_defs,
-                    lag,
+                    generation_interval,
                     batch = TRUE,
-                    include_fit = TRUE,
+                    include_fit = FALSE,
                     verbose = FALSE) {
   
   suppressMessages(data.table::setDTthreads(threads = 1))
@@ -248,13 +250,13 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
     out <- future.apply::future_lapply(1:data$samples,
                                        function(i, stan_data) {
                                          stan_data$samples <- 1
-                                         stan_data$delay <- stan_data$delay[i, ]
-                                         stan_data$incubation <- stan_data$incubation[i,]
+                                         stan_data$delay <- t(as.matrix(stan_data$delay[i, ]))
+                                         stan_data$incubation <- t(as.matrix(stan_data$incubation[i,]))
                                          
                                          out <- run_model(stan_data)
                                          
                                          return(out)
-                                       })
+                                       }, stan_data = data)
     
     out <- purrr::transpose(out)
     
