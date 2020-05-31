@@ -12,7 +12,7 @@
 #' ## Sample a report delay as a lognormal
 #' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
 #'                                        sd = 2, sd_sd = 1, max_value = 30,
-#'                                        samples = 100, to_log = TRUE)
+#'                                        samples = 10, to_log = TRUE)
 #'                                       
 #' 
 #' ## Sample a incubation period (again using the default for covid)
@@ -20,7 +20,7 @@
 #'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
 #'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
 #'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-#'                                           max_value = 30, samples = 100)
+#'                                           max_value = 30, samples = 10)
 #'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
@@ -28,13 +28,17 @@
 #' out <- nowcast(reported_cases, family = "poisson",
 #'                delay_defs = delay_defs, incubation_defs = incubation_defs,
 #'                generation_interval = generation_interval,
-#'                include_fit = TRUE, verbose = TRUE, batch = FALSE) 
+#'                include_fit = TRUE, verbose = TRUE) 
 #'                
 #' out                                   
 nowcast <- function(reported_cases, family = "poisson",
                     delay_defs,
                     incubation_defs,
                     generation_interval,
+                    cores = 1,
+                    chains = 2,
+                    samples = 1000,
+                    warmup = 1000,
                     batch = TRUE,
                     include_fit = FALSE,
                     verbose = FALSE) {
@@ -169,14 +173,15 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
   }
   
   run_model <- function(data) { 
-    fit <- rstan::sampling(model,
+    fit <- suppressWarnings(
+           rstan::sampling(model,
                            data = data,
-                           chains = 4,
+                           chains = chains,
                            init = init_fun,
-                           iter = 2000, 
-                           warmup = 1000,
-                           cores = 4,
-                           refresh = ifelse(verbose, 50, 0))
+                           iter = round(samples / (chains *  nrow(delay_cdfs))) + warmup, 
+                           warmup = warmup,
+                           cores = cores,
+                           refresh = ifelse(verbose, 50, 0)))
     
     
     
@@ -216,9 +221,6 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
                                         samples,
                                         reported_cases$date)
     
-    out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
-                                                       value = confirm)]
-    
     out$noise <- extract_parameter("noise", 
                                    samples,
                                    reported_cases$date)
@@ -244,6 +246,10 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
   
 # Run either all at once or in batch --------------------------------------
 
+  if(data$samples == 1) {
+    batch <- FALSE
+  }
+  
   if (!batch) {
     out <- run_model(data)
   }else{
@@ -269,11 +275,16 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
     
     
     out$infections <- bind_out(out$infections, by_var = "time")
-    out$noise <- bind_out(out$noise, by_var = "time")
+    out$prior_infections <- out$prior_infections[[1]]
     out$noise <- bind_out(out$noise, by_var = "time")
     out$wkd_eff <- bind_out(out$wkd_eff, by_var = "parameter")
     out$mon_eff <- bind_out(out$mon_eff, by_var = "parameter")
   }
+  
+  ## Add prior infections
+  out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
+                                                     date, value = confirm)]
+  
   
   return(out)
 }

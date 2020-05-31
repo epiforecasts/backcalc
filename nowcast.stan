@@ -51,7 +51,7 @@ transformed data{
 
 parameters{
   vector<lower = 0>[t] noise;
-  real <lower = 0> phi; 
+  real<lower = 0> phi; 
   real wkd_eff;
   real mon_eff;
 }

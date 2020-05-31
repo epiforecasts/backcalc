@@ -12,7 +12,7 @@ output: github_document
 
 ## Methods
 
-## Model
+### Model
 
 * Orginal implementation here: https://github.com/jhellewell14/rtconfirm/blob/master/R/backcalc.R
 
@@ -26,18 +26,29 @@ output: github_document
 
 ## Analysis
 
-* Packages
+### Dependencies
 
 ```{r}
+# To install dependencies
+# library(drat); drat:::add("epiforecasts")
+# and install all packages using install.packages as normal
 library(EpiNow)
+library(NCoVUtils)
 library(data.table)
+library(ggplot2)
+library(cowplot)
+library(rstan)
+
+## non-parameteric nowcasting function
+# See docs for dependency list
+source("nowcast.R")
 ```
 
-* Simulate data
+### Simulate data
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10))
+rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 10))
 rts
 
 ## Use the mean default generation interval for covid
@@ -59,15 +70,87 @@ incubation_def <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_perio
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday                                     
 simulated_cases <- simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
                     generation_interval = generation_interval, delay_def = delay_def,
-                   incubation_def = incubation_def, reporting_effect = c(1.1, rep(1, 4), 0.95, 0.95))
-
+                   incubation_def = incubation_def, reporting_effect = c(1.2, rep(1, 4), 0.9, 0.9))
 simulated_cases
 ```
     
-    
-* Fit model and compare to simulated data (+ to current sampling) and ability to recover reporting effects.
+  
+###  Compare approaches on simulated data
 
-* Fit to observed data: Austria (see `nowcast.R`) example.
+```{r}
+## Extract simulated infections
+simulated_infections <- simulated_cases[reference == "infection"][, confirm := cases][, cases := NULL]
+
+# Median covid generation interval
+generation_interval <- rowMeans(EpiNow::covid_generation_times)
+generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
+
+generation_interval
+
+## Reconstruction via backwards sampling
+sampling_cases <- nowcast_pipeline(reported_cases = simulated_infections[, import_status := "local"], 
+                                   target_date = max(simulated_infections$date),
+                                   delay_defs = delay_def[, cbind(.SD, sample = 1:1000)],
+                                   incubation_defs = incubation_def[, cbind(.SD, sample = 1:1000)])
+
+## Non-parameteric reconstruction
+non_parametric_cases <- nowcast(simulated_cases[reference == "infection"][, confirm := cases],
+                                family = "poisson",
+                                delay_defs = delay_def, incubation_defs = incubation_def,
+                                generation_interval = generation_interval)
+```
+
+### Compare approaches on reported Covid-19 cases in the United Kingdom, United States of America and South Korea
+
+* Get data
+
+```{r}
+reported_cases <- NCoVUtils::get_ecdc_cases(countries = c("Austria", "United_Kingdom", "United_States_of_America"))
+reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
+reported_cases <- data.table::as.data.table(reported_cases)[, confirm := cases][, cases := NULL]
+```
+
+* Get distributions with uncertainty
+
+```{r}
+## Sample a report delay as a lognormal
+delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
+                                      sd = 3, sd_sd = 1, max_value = 30,
+                                      samples = 10, to_log = TRUE)
+
+
+## Sample a incubation period (again using the default for covid)
+incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
+                                          mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
+                                          sd = EpiNow::covid_incubation_period[1, ]$sd,
+                                          sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
+                                          max_value = 30, samples = 10)
+```
+
+* Run backcalculation on each country in turn
+
+```{r}
+countries <- c("Austria", "United Kingdom", "United States of America", "Russia")
+
+results <- lapply(countries,
+                  function(country) {
+                                         
+         cases <- data.table::copy(reported_cases)[region %in% country]  
+                                        
+        ## Reconstruction via backwards sampling
+        sampling_cases <- nowcast_pipeline(reported_cases = cases[, import_status := "local"], 
+                                           target_date = max(simulated_infections$date),
+                                           delay_defs = delay_defs[, cbind(.SD, sample = 1:1000)],
+                                           incubation_defs = incubation_defs[, cbind(.SD, sample = 1:1000)])
+        
+        ## Non-parameteric reconstruction
+        non_parametric_cases <- nowcast(cases,
+                                        family = "poisson",
+                                        delay_defs = delay_defs, incubation_defs = incubation_defs,
+                                        generation_interval = generation_interval)
+                                       })
+
+```
 
 ## Results
 
