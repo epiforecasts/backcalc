@@ -14,6 +14,7 @@ data {
 
 parameters{
   real <lower = 0> noise[t];
+  real <lower = 0> phi; 
   real wkd_eff;
   real mon_eff;
 }
@@ -28,37 +29,47 @@ transformed parameters {
   }
   
   for(h in 1:samples) {
+    // Onsets from infections
      for (s in 1:t){
        onsets[h, s] = 0;
         for(i in 0:(min(s - 1, inc - 1))){
             onsets[h, s] += infections[s - i] * incubation[h, i + 1];
         }
      }
-    
+  
+   // Reports from onsets
    for (s in 1:t){
       reports[h, s] = 0;
         for(i in 0:(min(s - 1, d - 1))){
              reports[h, s] += onsets[h, s - i] * delay[h, i + 1];
         }
+        
+      // Adjust reports for reporting effects
+      reports[h, s] = reports[h, s] * (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
      }
-   }
+  }
 }
 
 model {
-  real adj_reports[t];
+  // Week effects
   wkd_eff ~ normal(0, 0.1);
   mon_eff ~ normal(0, 0.1);
   
+  // Reporting overdispersion
+  phi ~ exponential(1);
+
+  // Noise on median shift
   for (i in 1:t) {
     noise[i] ~ normal(1, 0.2) T[0,];
   }
   
   for (h in 1:samples) {
-    for (s in 1:t) {
-      adj_reports[s] = reports[h, s] * (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
-    }
-    
-    target += poisson_lpmf(cases | adj_reports);
+    // Log likelihood of reports
+     if (model_type == 1) {
+       target +=  poisson_lpmf(cases | reports[h]);
+     }else{
+       target += neg_binomial_2_lpmf(cases | reports[h], phi);
+     }
   }
 
 }

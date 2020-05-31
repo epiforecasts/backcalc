@@ -1,6 +1,6 @@
 #' @export
 #' @importFrom rstan sampling extract
-#' @importFrom data.table copy merge.data.table setorder rbindlist setDTthreads
+#' @importFrom data.table copy merge.data.table setorder rbindlist setDTthreads melt .N
 #' @importFrom purrr
 #' @importFrom lubridate wday
 #' @examples
@@ -11,7 +11,7 @@
 #' ## Sample a report delay as a lognormal
 #' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
 #'                                        sd = 2, sd_sd = 1, max_value = 30,
-#'                                        samples = 1, to_log = TRUE)
+#'                                        samples = 20, to_log = TRUE)
 #'                                       
 #' 
 #' ## Sample a incubation period (again using the default for covid)
@@ -19,7 +19,7 @@
 #'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
 #'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
 #'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-#'                                           max_value = 30, samples = 1)
+#'                                           max_value = 30, samples = 20)
 #'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
@@ -30,6 +30,7 @@
 nowcast <- function(reported_cases, family = "poisson",
                     delay_defs,
                     incubation_defs,
+                    lag,
                     verbose = FALSE) {
   
   suppressMessages(data.table::setDTthreads(threads = 1))
@@ -148,9 +149,10 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Set up initial conditions fn --------------------------------------------
 
-init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
+init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
                             wkd_eff = rnorm(1, 0, 0.1),
-                            mon_eff = rnorm(1, 0, 0.1))}
+                            mon_eff = rnorm(1, 0, 0.1),
+                            phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
 
@@ -168,5 +170,60 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                          cores = 4,
                          refresh = ifelse(verbose, 50, 0))
   
- return(fit)
+  
+
+# Extract parameters of interest from the fit -----------------------------
+  
+  ## Extract sample from stan object
+  samples <- rstan::extract(fit)
+  
+  ## Construct reporting list
+  out <- list()
+  
+  ## Generic data.frame reporting function
+  extract_parameter <- function(param, samples, dates) {
+    param_df <- data.table::as.data.table(
+      t(
+        data.table::as.data.table(
+          samples[[param]]
+        )
+      ))
+    
+    param_df <- param_df[, time := 1:.N]
+    param_df <- 
+      data.table::melt(param_df, id.vars = "time",
+                       variable.name = "var")
+    
+    param_df <- param_df[, var := NULL][,
+                                        sample := 1:.N, by = .(time)]
+    param_df <- param_df[, date := dates, by = .(sample)]
+    param_df <- param_df[, .(parameter = param, time, date, 
+                             sample, value)]
+    
+    return(param_df)
+  }
+  
+  ## Report infections, prior infections and noise
+  out$infections <- extract_parameter(samples,"imputed_infections", 
+                                  reported_cases$date)
+  
+  out$prior_infections <- shifted_reported_cases
+  
+  out$noise <- extract_parameter(samples,"imputed_infections", 
+                             reported_cases$date)
+  
+  out$wkd_eff <- data.table::data.table(
+    parameter = "wkd_eff",
+    sample = 1:length(samples$wkd_eff),
+    value = samples$wkd_eff)
+    
+  
+  out$mon_eff <- data.table::data.table(
+    parameter = "mon_eff",
+    sample = 1:length(samples$mon_eff),
+    value = samples$mon_eff)
+    
+  out$fit <- fit
+  
+ return(out)
 }
