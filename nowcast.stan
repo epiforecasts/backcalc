@@ -1,3 +1,24 @@
+functions {
+  // Convolve a pdf and case vector using matrix multiplication
+  vector convolve(vector cases, vector pdf) {
+    int t = num_elements(cases);
+    matrix[t, t] delay_mat = rep_matrix(0, t, t);
+    int max_pdf = num_elements(pdf);
+    row_vector[max_pdf] row_pdf = to_row_vector(pdf);
+    vector[t] convolved_cases;
+    
+    for (s in 1:t) {
+      int max_length = min(s, max_pdf);
+      delay_mat[s, (s - max_length + 1):s] = row_pdf[(max_pdf - max_length + 1):max_pdf];
+    }
+  
+   convolved_cases = delay_mat * to_vector(cases);
+
+   return convolved_cases;
+  }
+}
+
+
 data {
   int t; // number of time steps
   int d; 
@@ -6,46 +27,54 @@ data {
   int wkd[t];
   int mon[t];
   int <lower = 0> cases[t];
-  real <lower = 0> shifted_cases[t]; 
+  vector<lower = 0>[t] shifted_cases; 
   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
-  real delay[samples, d]; 
-  real incubation[samples, inc];
+  vector[d] delay[samples]; 
+  vector[inc] incubation[samples];
+}
+
+transformed data{
+  vector[d] rev_delay[samples];
+  vector[inc] rev_incubation[samples];
+  //Reverse the 
+  for (h in 1:samples) {
+    for (j in 1:d) {
+      rev_delay[h][j] = delay[h][d - j + 1];
+    }
+   
+    for (j in 1:inc) {
+        rev_incubation[h][j] = incubation[h][inc - j + 1];
+    }
+  }
+  
 }
 
 parameters{
-  real <lower = 0> noise[t];
+  vector<lower = 0>[t] noise;
   real <lower = 0> phi; 
   real wkd_eff;
   real mon_eff;
 }
 
 transformed parameters {
-  real<lower = 0> infections[t];
-  real<lower = 0> onsets[samples, t];
-  real<lower = 0> reports[samples, t];
+  vector<lower = 0>[t] infections;
+  vector<lower = 0>[t] onsets[samples];
+  vector<lower = 0>[t] reports[samples];
   
-  for (s in 1:t) {
-     infections[s] = shifted_cases[s] * noise[s];
-  }
+  //Generation infections from median shifted cases and non-parameteric noise
+  infections = shifted_cases .* noise;
+
   
   for(h in 1:samples) {
-    // Onsets from infections
-     for (s in 1:t){
-       onsets[h, s] = 0;
-        for(i in 0:(min(s - 1, inc - 1))){
-            onsets[h, s] += infections[s - i] * incubation[h, i + 1];
-        }
-     }
-  
-   // Reports from onsets
-   for (s in 1:t){
-      reports[h, s] = 0;
-        for(i in 0:(min(s - 1, d - 1))){
-             reports[h, s] += onsets[h, s - i] * delay[h, i + 1];
-        }
-        
-      // Adjust reports for reporting effects
-      reports[h, s] = reports[h, s] * (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
+     // Onsets from infections
+     onsets[h] = convolve(infections, rev_incubation[h]);
+     
+     // Reports from onsets
+     reports[h] = convolve(onsets[h], rev_delay[h]);
+     
+     // Add reporting effects
+     for (s in 1:t) {
+      reports[h, s] = reports[h, s] + (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
      }
   }
 }
