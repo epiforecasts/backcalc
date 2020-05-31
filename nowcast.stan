@@ -36,14 +36,14 @@ data {
 transformed data{
   vector[d] rev_delay[samples];
   vector[inc] rev_incubation[samples];
-  //Reverse the 
+  //Reverse the distributions to allow vectorised access
   for (h in 1:samples) {
     for (j in 1:d) {
       rev_delay[h][j] = delay[h][d - j + 1];
     }
    
     for (j in 1:inc) {
-        rev_incubation[h][j] = incubation[h][inc - j + 1];
+      rev_incubation[h][j] = incubation[h][inc - j + 1];
     }
   }
   
@@ -73,16 +73,16 @@ transformed parameters {
      reports[h] = convolve(onsets[h], rev_delay[h]);
      
      // Add reporting effects
-     for (s in 1:t) {
-      reports[h, s] = reports[h, s] + (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
-     }
+  //   for (s in 1:t) {
+  //      reports[h, s] = reports[h, s] + (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
+  //   }
   }
 }
 
 model {
   // Week effects
-  wkd_eff ~ normal(0, 0.1);
-  mon_eff ~ normal(0, 0.1);
+  wkd_eff ~ normal(0, 0.05);
+  mon_eff ~ normal(0, 0.05);
   
   // Reporting overdispersion
   phi ~ exponential(1);

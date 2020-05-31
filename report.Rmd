@@ -6,13 +6,33 @@ output: github_document
 **Authors:** EpiForecasts, CMMID Covid working group, Sebastian Funk
 
 
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  fig.width = 8, fig.height = 8, 
+  fig.align = "center"
+)
+```
+
 ## Summary
+
+* The current methods being used to backcalculate case counts by date of infection assume either a constant shift (typically by the mean/median of the delay from onset to report and the mean/median of the incubation period) or assume independence between cases and sample both the delay from onset to report and the incubation period. 
+
+* Parametric approaches are problematic in that they make assumptions about the data generating process that may not be correct.
+
+* Here we evaluate a non-parametric approach that is based on convoluting the known delays in comparison to our currently deployed independent sampling method.
+
+* We find that the non-parametric approach is better able to reproduce simulated data and returns plausible results when used on reported Covid-19 cases from 4 countries.
+
+* These findings are preliminary and more methodological work is required along with comparisons to other approaches.
 
 ## Introduction
 
 ## Methods
 
 ### Model
+
+* Overview: non-parameteric backcalculation assuming a median shift with independent gaussian noise.
 
 * Orginal implementation here: https://github.com/jhellewell14/rtconfirm/blob/master/R/backcalc.R
 
@@ -28,7 +48,7 @@ output: github_document
 
 ### Dependencies
 
-```{r}
+```{r, include = FALSE}
 # To install dependencies
 # library(drat); drat:::add("epiforecasts")
 # and install all packages using install.packages as normal
@@ -37,40 +57,56 @@ library(NCoVUtils)
 library(data.table)
 library(ggplot2)
 library(cowplot)
+library(lubridate)
+library(purrr)
 library(rstan)
 
 ## non-parameteric nowcasting function
-# See docs for dependency list
 source("nowcast.R")
+
+## Run in parallel when possible
+future::plan("multisession", workers = round(future::availableCores() / 2))
 ```
 
 ### Simulate data
+
+* Define a realistic basic reproduction number estimate that starts at 2, decreases linearly to 0.5, remains constant, increases linearly to 1.2 and then again remains constant.
 
 ```{r}
 ## Define an initial rt vector 
 rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 10))
 rts
+```
 
+* In order to simulate cases by date of infection from a reproduction number trace an estimate of the generation interval is required. We use the current default estimate for Covid-19 from `EpiNow`.
+
+```{r}
 ## Use the mean default generation interval for covid
 generation_interval <- rowMeans(EpiNow::covid_generation_times)
 
-## Sample a report delay as a lognormal
-delay_def <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
+generation_interval
+```
+
+```{r}
+## Sample a report delay as a lognormal - take 10 samples
+delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
                                       sd = 3, sd_sd = 1, max_value = 30,
-                                      samples = 1, to_log = TRUE)
+                                      to_log = TRUE, samples = 10)
 
 
-## Sample a incubation period (again using the default for covid)
-incubation_def <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
-                                          mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
-                                          sd = EpiNow::covid_incubation_period[1, ]$sd,
-                                          sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-                                          max_value = 30, samples = 1)
+## Sample a incubation period (again using the default for covid) - take 10 samples
+incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
+                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
+                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
+                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
+                                           max_value = 30, samples = 10)
 
-## Simulate cases with a decrease in reporting at weekends and an incease on Monday                                     
-simulated_cases <- simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
-                    generation_interval = generation_interval, delay_def = delay_def,
-                   incubation_def = incubation_def, reporting_effect = c(1.2, rep(1, 4), 0.9, 0.9))
+## Simulate cases with a decrease in reporting at weekends and an incease on Monday
+## using a single sample of both distributions                                    
+simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
+                                          generation_interval = generation_interval, delay_def = delay_defs[1, ],
+                                          incubation_def = incubation_defs[1, ],
+                                          reporting_effect = c(1.2, rep(1, 4), 0.9, 0.9))
 simulated_cases
 ```
     
@@ -79,25 +115,24 @@ simulated_cases
 
 ```{r}
 ## Extract simulated infections
-simulated_infections <- simulated_cases[reference == "infection"][, confirm := cases][, cases := NULL]
+simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][, cases := NULL]
 
-# Median covid generation interval
+# Median covid generation interval - used to smooth prior cases by date of infection
 generation_interval <- rowMeans(EpiNow::covid_generation_times)
 generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
 
-generation_interval
-
 ## Reconstruction via backwards sampling
-sampling_cases <- nowcast_pipeline(reported_cases = simulated_infections[, import_status := "local"], 
-                                   target_date = max(simulated_infections$date),
-                                   delay_defs = delay_def[, cbind(.SD, sample = 1:1000)],
-                                   incubation_defs = incubation_def[, cbind(.SD, sample = 1:1000)])
+sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
+                                   target_date = max(simulated_reports$date),
+                                   delay_defs = delay_defs[1,][, cbind(.SD, sample = 1:1000)],
+                                   incubation_defs = incubation_defs[1,][, cbind(.SD, sample = 1:1000)],
+                                   nowcast_lag = 0, approx_delay = TRUE)
 
 ## Non-parameteric reconstruction
-non_parametric_cases <- nowcast(simulated_cases[reference == "infection"][, confirm := cases],
-                                family = "poisson",
-                                delay_defs = delay_def, incubation_defs = incubation_def,
-                                generation_interval = generation_interval)
+non_parametric_cases <- nowcast(simulated_reports,
+                                family = "poisson", delay_defs = delay_defs[1,], 
+                                incubation_defs = incubation_defs[1,], 
+                                generation_interval = generation_interval, cores = 2)
 ```
 
 ### Compare approaches on reported Covid-19 cases in the United Kingdom, United States of America and South Korea
@@ -105,54 +140,159 @@ non_parametric_cases <- nowcast(simulated_cases[reference == "infection"][, conf
 * Get data
 
 ```{r}
-reported_cases <- NCoVUtils::get_ecdc_cases(countries = c("Austria", "United_Kingdom", "United_States_of_America"))
+reported_cases <- NCoVUtils::get_ecdc_cases(countries = c("Austria", "United_Kingdom", "United_States_of_America", "Russia"))
 reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
 reported_cases <- data.table::as.data.table(reported_cases)[, confirm := cases][, cases := NULL]
-```
-
-* Get distributions with uncertainty
-
-```{r}
-## Sample a report delay as a lognormal
-delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
-                                      sd = 3, sd_sd = 1, max_value = 30,
-                                      samples = 10, to_log = TRUE)
-
-
-## Sample a incubation period (again using the default for covid)
-incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
-                                          mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
-                                          sd = EpiNow::covid_incubation_period[1, ]$sd,
-                                          sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-                                          max_value = 30, samples = 10)
+reported_cases <- reported_cases[date >= "2020-02-01"]
 ```
 
 * Run backcalculation on each country in turn
 
-```{r}
+```{r, message = FALSE}
 countries <- c("Austria", "United Kingdom", "United States of America", "Russia")
 
 results <- lapply(countries,
                   function(country) {
-                                         
-         cases <- data.table::copy(reported_cases)[region %in% country]  
+        message("Nowcasting using sampling for: ", country)                
+        cases <- data.table::copy(reported_cases)[region %in% country]  
                                         
         ## Reconstruction via backwards sampling
         sampling_cases <- nowcast_pipeline(reported_cases = cases[, import_status := "local"], 
-                                           target_date = max(simulated_infections$date),
-                                           delay_defs = delay_defs[, cbind(.SD, sample = 1:1000)],
-                                           incubation_defs = incubation_defs[, cbind(.SD, sample = 1:1000)])
+                                           target_date = max(cases$date),
+                                           delay_defs = delay_defs[, cbind(.SD, sample = 1:100)],
+                                           incubation_defs = incubation_defs[, cbind(.SD, sample = 1:100)],
+                                           approx_delay = TRUE)
         
+        message("Non-parametric nowcasting for: ", country)
         ## Non-parameteric reconstruction
         non_parametric_cases <- nowcast(cases,
                                         family = "poisson",
                                         delay_defs = delay_defs, incubation_defs = incubation_defs,
-                                        generation_interval = generation_interval)
+                                        generation_interval = generation_interval, cores = 1)
+        
+        return(list(sampling_cases, non_parametric_cases))
                                        })
 
+names(results) <- countries
 ```
 
 ## Results
+
+
+### Simulated data
+
+* Reporting effects. *We do not recover the supplied reporting effects.*
+
+```{r}
+summary(non_parametric_cases$wkd_eff$value)
+
+summary(non_parametric_cases$mon_eff$value)
+```
+
+* Prepare data for plotting
+
+```{r}
+simulated_cases <- simulated_cases[reference %in% c("infection", "report")][, median := cases][,
+                                   type := ifelse(reference == "infection", 
+                                                  "Simulated infections", 
+                                                  "Simulated reported cases")][,
+                                   `:=`(cases = NULL, reference = NULL)]
+
+summarise_nowcasting_approaches <- function(sampling_cases, non_parametric_cases) {
+  sampling_cases <- sampling_cases[type %in% "infection_upscaled"][,
+               .(median = median(cases), bottom = quantile(cases, 0.025),
+                 lower = quantile(cases, 0.25), upper = quantile(cases, 0.75),
+                 top = quantile(cases, 0.975)), by = c("date", "type")][,
+                 type := "Sampled"]
+
+non_parametric_infections <- non_parametric_cases$infections[,
+               .(median = median(value), bottom = quantile(value, 0.025),
+                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
+                 top = quantile(value, 0.975)), by = c("date")][,
+                 type := "Non-parametric"]
+
+out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections), fill = TRUE)
+return(out)
+}
+
+summarised_nowcasting_approaches <- summarise_nowcasting_approaches(sampling_cases, non_parametric_cases)
+
+simulated_cases <- data.table::rbindlist(list(simulated_cases, out), fill = TRUE)
+```
+
+
+* Plot date. *Note: Here we have cut-off cases prior to the start of March. This truncates the long tale observed in the sampling approach.*
+
+```{r, fig.width = 9, fig.height = 6, dpi = 330, message = FALSE, warning = FALSE} 
+plot_data <- simulated_cases[date >= as.Date("2020-03-01")][,
+                             type := factor(type, levels = c("Simulated infections",
+                                                             "Simulated reported cases",
+                                                             "Non-parametric",
+                                                             "Sampled"))]
+plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = type)) +
+  ggplot2::geom_col(data = plot_data[type %in% "Simulated infections"],
+                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.5) +
+  ggplot2::geom_line(data = plot_data[type %in% "Simulated reported cases"],
+                      ggplot2::aes(y = median), size = 1.1) +
+  ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
+                          ggplot2::aes(ymin = bottom, ymax = top), 
+                         alpha = 0.4, size = 1.5) +
+ ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
+                         ggplot2::aes(ymin = lower, ymax = upper), 
+                         alpha = 0.8, size = 1.5) +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(legend.position = "bottom") +
+  ggplot2::scale_color_brewer(palette = "Dark2") +
+  ggplot2::labs(y = "Cases", x = "Date", col = "Type")
+
+plot
+```
+
+### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea
+
+* Explore weekend reporting effects by country
+
+```{r}
+purrr::map(results, ~ summary(.[[2]]$wkd_eff$value))
+```
+
+* Explore monday reporting effects by country
+
+```{r}
+purrr::map(results, ~ summary(.[[2]]$mon_eff$value))
+```
+
+* Prepare data for plotting
+
+```{r}
+summarised_cases <- data.table::copy(reported_cases)[, median := confirm][, type := "Reported Cases"]
+
+
+summarised_results <- purrr::map2(results, names(results),
+                                  ~ summarise_nowcasting_approaches(.x[[1]], .x[[2]])[, region := .y])
+
+summarised_results <- data.table::rbindlist(summarised_results)
+all_country_data <- data.table::rbindlist(list(summarised_cases, summarised_results), fill = TRUE)
+```
+
+* Plot data
+
+```{r, fig.width = 9, fig.height = 9, dpi = 330, message = FALSE, warning = FALSE} 
+plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fill = type)) +
+  ggplot2::geom_col(data = all_country_data[type %in% "Reported Cases"],
+                    ggplot2::aes(y = median), fill = "grey", col = "white") +
+  ggplot2::geom_linerange(ggplot2::aes(ymin = bottom, ymax = top), 
+                         alpha = 0.4, size = 1) +
+ ggplot2::geom_linerange(ggplot2::aes(ymin = lower, ymax = upper), 
+                         alpha = 0.8, size = 1) +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(legend.position = "bottom") +
+  ggplot2::scale_color_brewer(palette = "Dark2") +
+  ggplot2::labs(y = "Cases", x = "Date", col = "Type") + 
+  ggplot2::facet_wrap(~region, scales = "free_y")
+
+plot
+```
 
 ## Discussion
 

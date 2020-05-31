@@ -5,7 +5,7 @@
 #' @importFrom future.apply future_lapply
 #' @importFrom lubridate wday
 #' @examples
-#' reported_cases <- NCoVUtils::get_ecdc_cases(countries = "Austria")
+#' reported_cases <- NCoVUtils::get_ecdc_cases(countries = "Russia")
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
 #' reported_cases <- data.table::as.data.table(reported_cases)[, confirm := cases][, cases := NULL]
 #'   
@@ -122,7 +122,8 @@ nowcast <- function(reported_cases, family = "poisson",
                       confirm := data.table::shift(confirm, n = as.integer(median_shift),
                                                    type = "lead", fill = data.table::last(confirm))][,
                       confirm := data.table::frollmean(confirm, n = generation_interval, 
-                                                       align = "center", fill = data.table::last(confirm))]
+                                                       align = "center", fill = data.table::last(confirm))][,
+                      confirm := data.table::fifelse(confirm == 0, 1e-4, confirm)]
   
   ##Drop median generation interval initial values
   shifted_reported_cases <- shifted_reported_cases[-(1:generation_interval)]
@@ -131,7 +132,7 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Add week day info -------------------------------------------------------
 
-  reported_cases <- reported_cases[, weekday := lubridate::wday(date)][,
+  reported_cases <- reported_cases[, weekday := lubridate::wday(date, week_start = 1)][,
                                      `:=`(wkd = ifelse(weekday >= 6, 1, 0),
                                           mon = ifelse(weekday == 1, 1, 0))]
 # Define stan model parameters --------------------------------------------
@@ -160,8 +161,8 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
-                            wkd_eff = rnorm(1, 0, 0.1),
-                            mon_eff = rnorm(1, 0, 0.1),
+                            wkd_eff = rnorm(1, 0, 0.05),
+                            mon_eff = rnorm(1, 0, 0.05),
                             phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
