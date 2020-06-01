@@ -9,27 +9,45 @@
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
 #' reported_cases <- data.table::as.data.table(reported_cases)[, confirm := cases][, cases := NULL]
 #'   
+#' inc_mean_mean <- EpiNow::covid_incubation_period[1, ]$mean
+#' inc_mean_sd <- EpiNow::covid_incubation_period[1, ]$mean_sd
+#' inc_sd_mean <- EpiNow::covid_incubation_period[1, ]$sd
+#' inc_sd_sd <- EpiNow::covid_incubation_period[1, ]$sd_sd
+#' rep_mean_mean <- log(5)
+#' rep_mean_sd <- 1
+#' rep_sd_mean <- log(2)
+#' rep_sd_sd <- 1
+#'
 #' ## Sample a report delay as a lognormal
-#' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
-#'                                        sd = 2, sd_sd = 1, max_value = 30,
-#'                                        samples = 10, to_log = TRUE)
-#'                                       
-#' 
+#' delay_defs <- EpiNow::lognorm_dist_def(mean = rep_mean_mean, mean_sd = rep_mean_sd,
+#'                                        sd = rep_sd_mean, sd_sd = rep_sd_sd,
+#'                                        max_value = 30, samples = 10)
+#'
+#'
 #' ## Sample a incubation period (again using the default for covid)
 #' incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
 #'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
 #'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
 #'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
 #'                                           max_value = 30, samples = 10)
-#'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
-#'                                      
+#'
 #' out <- nowcast(reported_cases, family = "poisson",
 #'                delay_defs = delay_defs, incubation_defs = incubation_defs,
 #'                generation_interval = generation_interval,
-#'                include_fit = TRUE, verbose = TRUE) 
-#'                
+#'                verbose = TRUE,
+#'                inc_mean_mean = inc_mean_mean,
+#'                inc_mean_sd = inc_mean_sd,
+#'                inc_sd_mean = inc_sd_mean,
+#'                inc_sd_sd = inc_sd_sd,
+#'                rep_mean_mean = rep_mean_mean,
+#'                rep_mean_sd = rep_mean_sd,
+#'                rep_sd_mean = rep_sd_mean,
+#'                rep_sd_sd = rep_sd_sd,
+#'                model = model
+#'                )
+#'
 #' out                                   
 nowcast <- function(reported_cases, family = "poisson",
                     delay_defs,
@@ -42,7 +60,10 @@ nowcast <- function(reported_cases, family = "poisson",
                     batch = TRUE,
                     return_all = FALSE,
                     verbose = FALSE,
-                    model) {
+                    model,
+                    inc_mean_mean, inc_mean_sd, inc_sd_mean, inc_sd_sd,
+                    rep_mean_mean, rep_mean_sd, rep_sd_mean, rep_sd_sd
+                    ) {
   
   suppressMessages(data.table::setDTthreads(threads = 1))
   
@@ -147,7 +168,15 @@ nowcast <- function(reported_cases, family = "poisson",
     t = length(reported_cases$date),
     d = ncol(delay_pdfs),
     inc = ncol(incubation_pdfs),
-    samples = nrow(delay_pdfs)
+    samples = nrow(delay_pdfs),
+    inc_mean_mean = inc_mean_mean,
+    inc_mean_sd = inc_mean_sd,
+    inc_sd_mean = inc_sd_mean,
+    inc_sd_sd = inc_sd_sd,
+    rep_mean_mean = rep_mean_mean,
+    rep_mean_sd = rep_mean_sd,
+    rep_sd_mean = rep_sd_mean,
+    rep_sd_sd = rep_sd_sd
   )  
   
   ## Set model to poisson or negative binomial
@@ -296,3 +325,4 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
   
   return(out)
 }
+
