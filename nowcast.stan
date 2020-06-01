@@ -17,18 +17,18 @@ functions {
    return convolved_cases;
   }
 
-  real discretised_lognormal_pmf(int y, real mu, real sigma) {
-    return(lognormal_cdf(y, mu, sigma) -
-           lognormal_cdf(y - 1, mu, sigma));
-  }
+  real discretised_lognormal_pmf(int y, real mu, real sigma, int max_y) {
 
+    return((lognormal_cdf(y, mu, sigma) - lognormal_cdf(y - 1, mu, sigma)) / 
+                     (lognormal_cdf(max_y, mu, sigma)));
+  }
 }
 
 
 data {
   int t; // number of time steps
-  int d; 
-  int inc; 
+  int max_rep; 
+  int max_inc; 
   int day_of_week[t];
   int <lower = 0> cases[t];
   vector<lower = 0>[t] shifted_cases; 
@@ -61,8 +61,8 @@ parameters{
 }
 
 transformed parameters {
-  vector[d] rev_delay;
-  vector[inc] rev_incubation;
+  vector[max_rep] rev_delay;
+  vector[max_inc] rev_incubation;
   vector<lower = 0>[t] infections;
   vector<lower = 0>[t] onsets;
   vector<lower = 0>[t] reports;
@@ -72,36 +72,36 @@ transformed parameters {
   day_of_week_eff = 1 + append_row(day_of_week_eff_raw, -sum(day_of_week_eff_raw));
   
   //Reverse the distributions to allow vectorised access
-    for (j in 1:d) {
+    for (j in 1:max_rep) {
       rev_delay[j] =
-        discretised_lognormal_pmf(d - j + 1, inc_mean, inc_sd);
+        discretised_lognormal_pmf(max_rep - j + 1, inc_mean, inc_sd, max_rep);
         }
    
-    for (j in 1:inc) {
+    for (j in 1:max_inc) {
       rev_incubation[j] =
-        discretised_lognormal_pmf(inc - j + 1, rep_mean, rep_sd);
+        discretised_lognormal_pmf(max_inc - j + 1, rep_mean, rep_sd, max_inc);
     }
 
   //Generation infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
 
   
-     // Onsets from infections
-     onsets = convolve(infections, rev_incubation);
+  // Onsets from infections
+  onsets = convolve(infections, rev_incubation);
      
-     // Reports from onsets
-     reports = convolve(onsets, rev_delay);
+  // Reports from onsets
+  reports = convolve(onsets, rev_delay);
      
   // Add reporting effects
-    for (s in 1:t) {
-       reports[s] = reports[s] + day_of_week_eff[day_of_week[s]];
+  for (s in 1:t) {
+      reports[s] = reports[s] + day_of_week_eff[day_of_week[s]];
     }
 }
 
 model {
   // Week effect
   for (j in 1:6) {
-      day_of_week_eff_raw[j] ~ normal(0, 0.1) T[-1,];
+      day_of_week_eff_raw[j] ~ normal(0, 0.2) T[-1,];
   }
 
   // Reporting overdispersion
