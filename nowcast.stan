@@ -17,10 +17,9 @@ functions {
    return convolved_cases;
   }
 
-  real discretised_lognormal_pmf(int y, real mu, real sigma, int max_y) {
+  real discretised_lognormal_pmf(int y, real mu, real sigma) {
 
-    return((lognormal_cdf(y, mu, sigma) - lognormal_cdf(y - 1, mu, sigma)) / 
-                     (lognormal_cdf(max_y, mu, sigma)));
+    return((lognormal_cdf(y, mu, sigma) - lognormal_cdf(y - 1, mu, sigma)));
   }
 }
 
@@ -74,12 +73,12 @@ transformed parameters {
   //Reverse the distributions to allow vectorised access
     for (j in 1:max_rep) {
       rev_delay[j] =
-        discretised_lognormal_pmf(max_rep - j + 1, inc_mean, inc_sd, max_rep);
+        discretised_lognormal_pmf(max_rep - j + 1, inc_mean, inc_sd);
         }
    
     for (j in 1:max_inc) {
       rev_incubation[j] =
-        discretised_lognormal_pmf(max_inc - j + 1, rep_mean, rep_sd, max_inc);
+        discretised_lognormal_pmf(max_inc - j + 1, rep_mean, rep_sd);
     }
 
   //Generation infections from median shifted cases and non-parameteric noise
@@ -99,9 +98,9 @@ transformed parameters {
 }
 
 model {
-  // Week effect
+  // Week effect - upweighted by overall time
   for (j in 1:6) {
-      day_of_week_eff_raw[j] ~ normal(0, 0.2) T[-1,];
+    day_of_week_eff_raw[j] ~ normal(0, 0.2) T[-1,];
   }
 
   // Reporting overdispersion
@@ -112,20 +111,18 @@ model {
     noise[i] ~ normal(1, 0.2) T[0,];
   }
   
-    // Log likelihood of reports
-     if (model_type == 1) {
-       target +=  poisson_lpmf(cases | reports);
-     }else{
-       target += neg_binomial_2_lpmf(cases | reports, phi);
-     }
-
+  // Log likelihood of reports
+  if (model_type == 1) {
+    target +=  poisson_lpmf(cases | reports);
+  }else{
+    target += neg_binomial_2_lpmf(cases | reports, phi);
+  }
 
   // penalised priors
-  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) / total_cases;
-  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) / total_cases;
-  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) / total_cases;
-  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) / total_cases;
-
+  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * total_cases;
+  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * total_cases;
+  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * total_cases;
+  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * total_cases;
 }
   
 generated quantities {

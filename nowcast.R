@@ -63,11 +63,11 @@ nowcast <- function(reported_cases, family = "poisson",
   ## Filter out 0 reported cases
   reported_cases <- reported_cases[, cum_cases := cumsum(confirm)][cum_cases > 0][, cum_cases := NULL]
 
-# Estimate the median delay -----------------------------------------------
+# Estimate the mean delay -----------------------------------------------
   
   mean_shift <- incubation_period$mean + reporting_delay$mean
 
-# Add the median delay and incubation period on as 0 case days ------------
+# Add the mean delay and incubation period on as 0 case days ------------
 
   reported_cases <- data.table::rbindlist(list(
     data.table::data.table(date = seq(min(reported_cases$date) - mean_shift - generation_interval, 
@@ -79,7 +79,7 @@ nowcast <- function(reported_cases, family = "poisson",
   # Calculate smoothed prior cases ------------------------------------------
 
   shifted_reported_cases <- data.table::copy(reported_cases)[,
-                      confirm := data.table::shift(confirm, n = as.integer(median_shift),
+                      confirm := data.table::shift(confirm, n = as.integer(mean_shift),
                                                    type = "lead", fill = data.table::last(confirm))][,
                       confirm := data.table::frollmean(confirm, n = generation_interval, 
                                                        align = "center", fill = data.table::last(confirm))][,
