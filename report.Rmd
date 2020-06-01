@@ -98,25 +98,37 @@ generation_interval
 ```
 
 ```{r}
+incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
+                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
+                           sd = EpiNow::covid_incubation_period[1, ]$sd,
+                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
+                           max = 30)
+                    
+reporting_delay <- list(mean = log(5),
+                         mean_sd = log(1.1),
+                         sd = log(2),
+                         sd_sd = log(1.2),
+                         max = 30)
+
 ## Sample a report delay as a lognormal - take 10 samples
-delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
-                                      sd = 3, sd_sd = 1, max_value = 30,
-                                      to_log = TRUE, samples = 10)
+delay_defs <- EpiNow::lognorm_dist_def(mean = reporting_delay$mean, mean_sd = reporting_delay$mean_sd,
+                                       sd = reporting_delay$sd, sd_sd = reporting_delay$sd_sd,
+                                       max_value = reporting_delay$max, samples = 1000)
 
 
 ## Sample a incubation period (again using the default for covid) - take 10 samples
-incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
-                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
-                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
-                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-                                           max_value = 30, samples = 10)
+incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
+                                           mean_sd = incubation_period$mean_sd,
+                                           sd = incubation_period$sd,
+                                           sd_sd = incubation_period$sd_sd,
+                                           max_value = 30, samples = 1000)
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
 simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_interval, delay_def = delay_defs[1, ],
                                           incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.4, rep(1, 4), 0.8, 0.8))
+                                          reporting_effect = c(1, rep(1, 4), 1, 1))
 simulated_cases
 ```
     
@@ -134,16 +146,16 @@ generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
                                    target_date = max(simulated_reports$date),
-                                   delay_defs = delay_defs[1,][, cbind(.SD, sample = 1:1000)],
-                                   incubation_defs = incubation_defs[1,][, cbind(.SD, sample = 1:1000)],
+                                   delay_defs = delay_defs,
+                                   incubation_defs = incubation_defs,
                                    nowcast_lag = 0, approx_delay = TRUE)
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "poisson", delay_defs = delay_defs[1,], 
-                                incubation_defs = incubation_defs[1,], 
-                                generation_interval = generation_interval, cores = 2,
-                                return_all = TRUE, model = model)
+                                family = "poisson", incubation_period = incubation_period,
+                                reporting_delay = reporting_delay,
+                                generation_interval = generation_interval, cores = 4, chains = 4,
+                                samples = 1000, return_all = TRUE, model = model, verbose = TRUE)
 ```
 
 ### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
@@ -171,17 +183,19 @@ results <- lapply(countries,
         ## Reconstruction via backwards sampling
         sampling_cases <- nowcast_pipeline(reported_cases = cases[, import_status := "local"], 
                                            target_date = max(cases$date),
-                                           delay_defs = delay_defs[, cbind(.SD, sample = 1:100)],
-                                           incubation_defs = incubation_defs[, cbind(.SD, sample = 1:100)],
+                                           delay_defs = delay_defs,
+                                           incubation_defs = incubation_defs,
                                            approx_delay = TRUE)
         
         message("Non-parametric nowcasting for: ", country)
         ## Non-parametric reconstruction
         non_parametric_cases <- nowcast(cases,
                                         family = "poisson",
-                                        delay_defs = delay_defs, incubation_defs = incubation_defs,
-                                        generation_interval = generation_interval, cores = 1,
-                                        return_all = TRUE, model = model)
+                                         incubation_period = incubation_period,
+                                         reporting_delay = reporting_delay,
+                                         generation_interval = generation_interval, 
+                                         samples = 1000, cores = 4, chains = 4,
+                                         return_all = TRUE, model = model)
         
         return(list(sampling_cases, non_parametric_cases))
                                        })
@@ -198,6 +212,26 @@ names(results) <- countries
 
 ```{r}
 non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
+```
+
+* Recover reporting delays
+
+```{r}
+data.table::rbindlist(list(
+  non_parametric_cases$rep_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
+  non_parametric_cases$rep_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
+))
+
+```
+
+* Recover incubation period
+
+```{r}
+data.table::rbindlist(list(
+  non_parametric_cases$inc_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
+  non_parametric_cases$inc_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
+))
+
 ```
 
 * Prepare data for plotting
@@ -244,7 +278,7 @@ plot_data <- simulated_cases[date >= as.Date("2020-03-01")][,
                                                              "Sampled"))]
 plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = type)) +
   ggplot2::geom_col(data = plot_data[type %in% "Simulated infections"],
-                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.5) +
+                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.8) +
   ggplot2::geom_line(data = plot_data[type %in% "Simulated reported cases"],
                       ggplot2::aes(y = median), size = 1.1) +
   ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
@@ -252,7 +286,7 @@ plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = typ
                          alpha = 0.4, size = 1.5) +
  ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
                          ggplot2::aes(ymin = lower, ymax = upper), 
-                         alpha = 0.8, size = 1.5) +
+                         alpha = 0.6, size = 1.5) +
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +
   ggplot2::scale_color_brewer(palette = "Dark2") +
@@ -263,16 +297,10 @@ plot
 
 ### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea
 
-* Explore weekend reporting effects by country
+* Explore reporting effects by country
 
 ```{r}
-purrr::map(results, ~ summary(.[[2]]$wkd_eff$value))
-```
-
-* Explore monday reporting effects by country
-
-```{r}
-purrr::map(results, ~ summary(.[[2]]$mon_eff$value))
+purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 ```
 
 * Prepare data for plotting

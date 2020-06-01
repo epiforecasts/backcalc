@@ -8,41 +8,45 @@
 #' reported_cases <- NCoVUtils::get_ecdc_cases(countries = "Russia")
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
 #' reported_cases <- data.table::as.data.table(reported_cases)[, confirm := cases][, cases := NULL]
-#'   
-#' ## Sample a report delay as a lognormal
-#' delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
-#'                                        sd = 2, sd_sd = 1, max_value = 30,
-#'                                        samples = 10, to_log = TRUE)
-#'                                       
-#' 
-#' ## Sample a incubation period (again using the default for covid)
-#' incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
-#'                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
-#'                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
-#'                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-#'                                           max_value = 30, samples = 10)
+#'  
+#' incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
+#'                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
+#'                           sd = EpiNow::covid_incubation_period[1, ]$sd,
+#'                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
+#'                           max = 30)
+#'                    
+#' reporting_delay <- list(mean = log(5),
+#'                         mean_sd = log(2),
+#'                         sd = log(2),
+#'                         sd_sd = log(1.5),
+#'                         max = 30)
 #'
 #'  generation_interval <- rowMeans(EpiNow::covid_generation_times)
 #'  generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
-#'                                      
+#'   
+#'  ## Compile model
+#'  model <- rstan::stan_model("nowcast.stan")
+#' 
+#' ## Run model
 #' out <- nowcast(reported_cases, family = "poisson",
-#'                delay_defs = delay_defs, incubation_defs = incubation_defs,
 #'                generation_interval = generation_interval,
-#'                include_fit = TRUE, verbose = TRUE) 
-#'                
+#'                incubation_period = incubation_period,
+#'                reporting_delay = reporting_delay,
+#'                model = model,
+#'                cores = 4, chains = 4,
+#'                verbose = TRUE, return_all = TRUE
+#'                )
+#'
 #' out                                   
 nowcast <- function(reported_cases, family = "poisson",
-                    delay_defs,
-                    incubation_defs,
-                    generation_interval,
+                    incubation_period, reporting_delay,
+                    generation_interval, model,
                     cores = 1,
                     chains = 2,
                     samples = 1000,
                     warmup = 1000,
-                    batch = TRUE,
                     return_all = FALSE,
-                    verbose = FALSE,
-                    model) {
+                    verbose = FALSE){
   
   suppressMessages(data.table::setDTthreads(threads = 1))
   
@@ -59,59 +63,14 @@ nowcast <- function(reported_cases, family = "poisson",
   ## Filter out 0 reported cases
   reported_cases <- reported_cases[, cum_cases := cumsum(confirm)][cum_cases > 0][, cum_cases := NULL]
 
-  # Balance input delay and incubation samples ------------------------------
+# Estimate the mean delay -----------------------------------------------
   
-  balance_dfs <- function(df1, df2) {
-    if (nrow(df1) > nrow(df2)) {
-      df2 <- data.table::rbindlist(list(
-        df2,
-        df2[sample(1:nrow(df2), (nrow(df1) - nrow(df2)), replace = TRUE), ]
-      ))
-    }
-    return(df2)
-  }
-  
-  incubation_defs <- balance_dfs(delay_defs, incubation_defs)
-  delay_defs <- balance_dfs(incubation_defs, delay_defs)
-  
-  # Calculate PDFs of distributions -----------------------------------------
+  mean_shift <- incubation_period$mean + reporting_delay$mean
 
-  generate_pdf <- function(dist, max_value) {
-    ## Define sample delay fn
-    sample_fn <- function(n, ...) {
-      EpiNow::dist_skel(n = n, 
-                        model = dist$model[[1]], 
-                        params = dist$params[[1]],
-                        max_value = dist$max_value[[1]], 
-                        ...)
-    }
-    
-    dist_pdf <- sample_fn(0:max_value, dist = TRUE, cum = FALSE)
-    
-    return(dist_pdf)
-  }
-  
-  delay_pdfs <- purrr::map(split(delay_defs[, index := 1:.N], by = "index"),
-                           generate_pdf, max_value = nrow(reported_cases))
-  
-  delay_pdfs <- do.call(rbind, delay_pdfs)
-  
-  incubation_pdfs <- purrr::map(split(incubation_defs[, index := 1:.N], by = "index"),
-                           generate_pdf, max_value = nrow(reported_cases))
-  
-  incubation_pdfs <- do.call(rbind, incubation_pdfs)
-    
-
-# Estimate the median delay -----------------------------------------------
-  median_delay <- sum(!(cumsum(colMeans(delay_pdfs)) > 0.5)) + 1
-  median_incubation <- sum(!(cumsum(colMeans(incubation_pdfs)) > 0.5)) + 1
-  
-  median_shift <- median_delay + median_incubation 
-
-# Add the median delay and incubation period on as 0 case days ------------
+# Add the mean delay and incubation period on as 0 case days ------------
 
   reported_cases <- data.table::rbindlist(list(
-    data.table::data.table(date = seq(min(reported_cases$date) - median_shift - generation_interval, 
+    data.table::data.table(date = seq(min(reported_cases$date) - mean_shift - generation_interval, 
                                       min(reported_cases$date) - 1, by = "days"),
                            confirm = 0),
     reported_cases
@@ -120,7 +79,7 @@ nowcast <- function(reported_cases, family = "poisson",
   # Calculate smoothed prior cases ------------------------------------------
 
   shifted_reported_cases <- data.table::copy(reported_cases)[,
-                      confirm := data.table::shift(confirm, n = as.integer(median_shift),
+                      confirm := data.table::shift(confirm, n = as.integer(mean_shift),
                                                    type = "lead", fill = data.table::last(confirm))][,
                       confirm := data.table::frollmean(confirm, n = generation_interval, 
                                                        align = "center", fill = data.table::last(confirm))][,
@@ -142,12 +101,17 @@ nowcast <- function(reported_cases, family = "poisson",
     day_of_week = reported_cases$day_of_week,
     cases = reported_cases$confirm,
     shifted_cases = shifted_reported_cases$confirm,
-    delay = delay_pdfs,
-    incubation = incubation_pdfs,
     t = length(reported_cases$date),
-    d = ncol(delay_pdfs),
-    inc = ncol(incubation_pdfs),
-    samples = nrow(delay_pdfs)
+    max_rep = reporting_delay$max,
+    max_inc = incubation_period$max,
+    inc_mean_mean = incubation_period$mean,
+    inc_mean_sd = incubation_period$mean_sd,
+    inc_sd_mean = incubation_period$sd,
+    inc_sd_sd = incubation_period$sd_sd,
+    rep_mean_mean = reporting_delay$mean,
+    rep_mean_sd = reporting_delay$mean_sd,
+    rep_sd_mean = reporting_delay$sd,
+    rep_sd_sd = reporting_delay$sd_sd
   )  
   
   ## Set model to poisson or negative binomial
@@ -161,7 +125,7 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
-                            day_of_week_eff_raw = rnorm(6, 0, 0.1),
+                            day_of_week_eff = rnorm(7, 1, 0.1),
                             phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
@@ -172,19 +136,20 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
 
   
   if (verbose) {
-    message(paste0("Running for ",data$samples," samples and ", data$t," time steps"))
+    message(paste0("Running for ",samples + warmup," samples and ", data$t," time steps"))
   }
   
-  run_model <- function(data) { 
-    fit <- suppressWarnings(
+
+  fit <- suppressWarnings(
            rstan::sampling(model,
                            data = data,
                            chains = chains,
                            init = init_fun,
-                           iter = round(samples / (chains *  nrow(delay_pdfs))) + warmup, 
+                           iter = samples + warmup, 
                            warmup = warmup,
                            cores = cores,
-                           refresh = ifelse(verbose, 50, 0)))
+                           refresh = ifelse(verbose, 50, 0))
+           )
     
     
     
@@ -239,60 +204,30 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
       out$day_of_week <- out$day_of_week[char_day_of_week, on = "time"][, 
                                          wday_numeric := time][, 
                                          time := NULL]
-  
-      out$fit <- fit
-    }
 
-    return(out)
-  }
-  
-  
-# Run either all at once or in batch --------------------------------------
-
-  if(data$samples == 1) {
-    batch <- FALSE
-  }
-  
-  if (!batch) {
-    out <- run_model(data)
-  }else{
-    out <- future.apply::future_lapply(1:data$samples,
-                                       function(i, stan_data) {
-                                         stan_data$samples <- 1
-                                         stan_data$delay <- t(as.matrix(stan_data$delay[i, ]))
-                                         stan_data$incubation <- t(as.matrix(stan_data$incubation[i,]))
-                                         
-                                         out <- run_model(stan_data)
-                                         
-                                         return(out)
-                                       }, stan_data = data,
-                                       future.scheduling = Inf)
-    
-    out <- purrr::transpose(out)
-    
-    bind_out <- function(out_list, by_var) {
-      out_list <- data.table::rbindlist(out_list)
-      out_list <- out_list[, sample := 1:.N, by = by_var]
-      
-      return(out_list)
-    }
-    
-    
-    out$infections <- bind_out(out$infections, by_var = "time")
-    
-    if (return_all) { 
-      out$prior_infections <- out$prior_infections[[1]]
-      out$noise <- bind_out(out$noise, by_var = "time")
-      out$day_of_week <- bind_out(out$day_of_week, by_var = "wday")
+      extract_static_parameter <- function(param) {
+        data.table::data.table(
+          parameter = param,
+          sample = 1:length(samples[[param]]),
+          value = samples[[param]])
       }
-  }
-  
-  if (return_all) {
-    ## Add prior infections
-    out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
+      
+      out$inc_mean <- extract_static_parameter("inc_mean")
+      
+      out$inc_sd <- extract_static_parameter("inc_sd")
+      
+      out$rep_mean <- extract_static_parameter("rep_mean")
+      
+      out$rep_sd <- extract_static_parameter("rep_sd")
+      
+      out$fit <- fit
+      
+      ## Add prior infections
+      out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
                                                        date, value = confirm)]
   }
   
   
   return(out)
 }
+
