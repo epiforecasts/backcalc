@@ -40,8 +40,9 @@ nowcast <- function(reported_cases, family = "poisson",
                     samples = 1000,
                     warmup = 1000,
                     batch = TRUE,
-                    include_fit = FALSE,
-                    verbose = FALSE) {
+                    return_all = FALSE,
+                    verbose = FALSE,
+                    model) {
   
   suppressMessages(data.table::setDTthreads(threads = 1))
   
@@ -73,9 +74,9 @@ nowcast <- function(reported_cases, family = "poisson",
   incubation_defs <- balance_dfs(delay_defs, incubation_defs)
   delay_defs <- balance_dfs(incubation_defs, delay_defs)
   
-  # Calculate CDFs of distributions -----------------------------------------
+  # Calculate PDFs of distributions -----------------------------------------
 
-  generate_cdf <- function(dist, max_value) {
+  generate_pdf <- function(dist, max_value) {
     ## Define sample delay fn
     sample_fn <- function(n, ...) {
       EpiNow::dist_skel(n = n, 
@@ -85,25 +86,25 @@ nowcast <- function(reported_cases, family = "poisson",
                         ...)
     }
     
-    dist_cdf <- sample_fn(0:max_value, dist = TRUE, cum = FALSE)
+    dist_pdf <- sample_fn(0:max_value, dist = TRUE, cum = FALSE)
     
-    return(dist_cdf)
+    return(dist_pdf)
   }
   
-  delay_cdfs <- purrr::map(split(delay_defs[, index := 1:.N], by = "index"),
-                           generate_cdf, max_value = nrow(reported_cases))
+  delay_pdfs <- purrr::map(split(delay_defs[, index := 1:.N], by = "index"),
+                           generate_pdf, max_value = nrow(reported_cases))
   
-  delay_cdfs <- do.call(rbind, delay_cdfs)
+  delay_pdfs <- do.call(rbind, delay_pdfs)
   
-  incubation_cdfs <- purrr::map(split(incubation_defs[, index := 1:.N], by = "index"),
-                           generate_cdf, max_value = nrow(reported_cases))
+  incubation_pdfs <- purrr::map(split(incubation_defs[, index := 1:.N], by = "index"),
+                           generate_pdf, max_value = nrow(reported_cases))
   
-  incubation_cdfs <- do.call(rbind, incubation_cdfs)
+  incubation_pdfs <- do.call(rbind, incubation_pdfs)
     
 
 # Estimate the median delay -----------------------------------------------
-  median_delay <- sum(!(cumsum(colMeans(delay_cdfs)) > 0.5)) + 1
-  median_incubation <- sum(!(cumsum(colMeans(incubation_cdfs)) > 0.5)) + 1
+  median_delay <- sum(!(cumsum(colMeans(delay_pdfs)) > 0.5)) + 1
+  median_incubation <- sum(!(cumsum(colMeans(incubation_pdfs)) > 0.5)) + 1
   
   median_shift <- median_delay + median_incubation 
 
@@ -142,12 +143,12 @@ nowcast <- function(reported_cases, family = "poisson",
     mon = reported_cases$mon,
     cases = reported_cases$confirm,
     shifted_cases = shifted_reported_cases$confirm,
-    delay = delay_cdfs,
-    incubation = incubation_cdfs,
+    delay = delay_pdfs,
+    incubation = incubation_pdfs,
     t = length(reported_cases$date),
-    d = ncol(delay_cdfs),
-    inc = ncol(incubation_cdfs),
-    samples = nrow(delay_cdfs)
+    d = ncol(delay_pdfs),
+    inc = ncol(incubation_pdfs),
+    samples = nrow(delay_pdfs)
   )  
   
   ## Set model to poisson or negative binomial
@@ -160,14 +161,17 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Set up initial conditions fn --------------------------------------------
 
-init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
+init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                             wkd_eff = rnorm(1, 0, 0.05),
                             mon_eff = rnorm(1, 0, 0.05),
                             phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
 
-  model <- rstan::stan_model("nowcast.stan")
+  if (missing(model)) {
+    model <- rstan::stan_model("nowcast.stan")
+  }
+
   
   if (verbose) {
     message(paste0("Running for ",data$samples," samples and ", data$t," time steps"))
@@ -179,7 +183,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
                            data = data,
                            chains = chains,
                            init = init_fun,
-                           iter = round(samples / (chains *  nrow(delay_cdfs))) + warmup, 
+                           iter = round(samples / (chains *  nrow(delay_pdfs))) + warmup, 
                            warmup = warmup,
                            cores = cores,
                            refresh = ifelse(verbose, 50, 0)))
@@ -222,22 +226,21 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
                                         samples,
                                         reported_cases$date)
     
-    out$noise <- extract_parameter("noise", 
-                                   samples,
-                                   reported_cases$date)
-    
-    out$wkd_eff <- data.table::data.table(
-      parameter = "wkd_eff",
-      sample = 1:length(samples$wkd_eff),
-      value = samples$wkd_eff)
-    
-    
-    out$mon_eff <- data.table::data.table(
-      parameter = "mon_eff",
-      sample = 1:length(samples$mon_eff),
-      value = samples$mon_eff)
-    
-    if (include_fit) {
+    if (return_all) {
+      out$noise <- extract_parameter("noise", 
+                                     samples,
+                                     reported_cases$date)
+      
+      out$wkd_eff <- data.table::data.table(
+        parameter = "wkd_eff",
+        sample = 1:length(samples$wkd_eff),
+        value = samples$wkd_eff)
+      
+      out$mon_eff <- data.table::data.table(
+        parameter = "mon_eff",
+        sample = 1:length(samples$mon_eff),
+        value = samples$mon_eff)
+  
       out$fit <- fit
     }
 
@@ -263,7 +266,8 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
                                          out <- run_model(stan_data)
                                          
                                          return(out)
-                                       }, stan_data = data)
+                                       }, stan_data = data,
+                                       future.scheduling = Inf)
     
     out <- purrr::transpose(out)
     
@@ -276,15 +280,20 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.2),
     
     
     out$infections <- bind_out(out$infections, by_var = "time")
-    out$prior_infections <- out$prior_infections[[1]]
-    out$noise <- bind_out(out$noise, by_var = "time")
-    out$wkd_eff <- bind_out(out$wkd_eff, by_var = "parameter")
-    out$mon_eff <- bind_out(out$mon_eff, by_var = "parameter")
+    
+    if (return_all) { 
+      out$prior_infections <- out$prior_infections[[1]]
+      out$noise <- bind_out(out$noise, by_var = "time")
+      out$wkd_eff <- bind_out(out$wkd_eff, by_var = "parameter")
+      out$mon_eff <- bind_out(out$mon_eff, by_var = "parameter")
+      }
   }
   
-  ## Add prior infections
-  out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
-                                                     date, value = confirm)]
+  if (return_all) {
+    ## Add prior infections
+    out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
+                                                       date, value = confirm)]
+  }
   
   
   return(out)
