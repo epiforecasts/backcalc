@@ -155,7 +155,7 @@ model
 #> 
 #>   // Noise on median shift
 #>   for (i in 1:t) {
-#>     noise[i] ~ normal(1, 0.1) T[0,];
+#>     noise[i] ~ normal(1, 0.2) T[0,];
 #>   }
 #>   
 #>   for (h in 1:samples) {
@@ -237,17 +237,17 @@ simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_dat
                                           reporting_effect = c(1.2, rep(1, 4), 0.9, 0.9))
 simulated_cases
 #>            date cases reference
-#>   1: 2020-03-02    36 infection
-#>   2: 2020-03-03    49 infection
-#>   3: 2020-03-04    70 infection
-#>   4: 2020-03-05    82 infection
-#>   5: 2020-03-06   107 infection
+#>   1: 2020-03-02    42 infection
+#>   2: 2020-03-03    70 infection
+#>   3: 2020-03-04    91 infection
+#>   4: 2020-03-05    99 infection
+#>   5: 2020-03-06   143 infection
 #>  ---                           
-#> 179: 2020-04-27   763    report
-#> 180: 2020-04-28   770    report
-#> 181: 2020-04-29   777    report
-#> 182: 2020-04-30   763    report
-#> 183: 2020-05-01   684    report
+#> 178: 2020-04-27   868    report
+#> 179: 2020-04-28   847    report
+#> 180: 2020-04-29   857    report
+#> 181: 2020-04-30   846    report
+#> 182: 2020-05-01   715    report
 ```
 
 ### Compare approaches on simulated data
@@ -336,11 +336,11 @@ names(results) <- countries
 ``` r
 summary(non_parametric_cases$wkd_eff$value)
 #>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1624922 -0.0318217 -0.0002617  0.0009404  0.0339544  0.1603472
+#> -0.1739073 -0.0350632 -0.0019067 -0.0002553  0.0356082  0.1918659
 
 summary(non_parametric_cases$mon_eff$value)
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1642350 -0.0334047  0.0016804  0.0003967  0.0343018  0.1487174
+#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
+#> -0.151298 -0.029964  0.001329  0.001196  0.032267  0.152475
 ```
 
   - Prepare data for
@@ -410,7 +410,7 @@ plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = typ
 plot
 ```
 
-<img src="report_files/figure-gfm/unnamed-chunk-11-1.png" style="display: block; margin: auto;" />
+<img src="figuresunnamed-chunk-11-1.png" style="display: block; margin: auto;" />
 
 ### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea
 
@@ -421,20 +421,20 @@ plot
 ``` r
 purrr::map(results, ~ summary(.[[2]]$wkd_eff$value))
 #> $Austria
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1733312 -0.0351102  0.0007206 -0.0006783  0.0318282  0.1813416 
+#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
+#> -0.163008 -0.030246  0.001576  0.001307  0.033514  0.164379 
 #> 
 #> $`United Kingdom`
 #>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -1.702e-01 -3.582e-02 -7.415e-05 -4.143e-04  3.650e-02  1.550e-01 
+#> -0.1517488 -0.0349511  0.0005338  0.0003938  0.0353042  0.1518393 
 #> 
 #> $`United States of America`
 #>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1946642 -0.0316083 -0.0006934 -0.0005772  0.0313713  0.1761510 
+#> -0.1826221 -0.0337627 -0.0011328 -0.0003989  0.0347389  0.1570095 
 #> 
 #> $Russia
 #>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1578733 -0.0346145  0.0005369  0.0005852  0.0341528  0.2013751
+#> -0.1563835 -0.0330590 -0.0014323 -0.0008635  0.0314774  0.1556434
 ```
 
   - Explore monday reporting effects by country
@@ -444,20 +444,20 @@ purrr::map(results, ~ summary(.[[2]]$wkd_eff$value))
 ``` r
 purrr::map(results, ~ summary(.[[2]]$mon_eff$value))
 #> $Austria
-#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
-#> -0.175195 -0.031175  0.001089  0.001348  0.032496  0.149778 
+#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
+#> -1.573e-01 -3.158e-02  3.645e-04 -6.313e-05  3.227e-02  1.550e-01 
 #> 
 #> $`United Kingdom`
 #>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -1.810e-01 -3.171e-02 -7.333e-04  6.898e-05  3.133e-02  1.508e-01 
+#> -0.1561774 -0.0373820  0.0004951 -0.0005746  0.0345032  0.1556001 
 #> 
 #> $`United States of America`
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1423751 -0.0327075  0.0002204  0.0015170  0.0381874  0.1558895 
+#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
+#> -0.164238 -0.036029  0.001129 -0.000843  0.034587  0.179298 
 #> 
 #> $Russia
-#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
-#> -0.177877 -0.031780  0.001504  0.001113  0.032527  0.138966
+#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
+#> -0.1430047 -0.0331486  0.0004139  0.0010628  0.0358330  0.1529342
 ```
 
   - Prepare data for
@@ -499,7 +499,7 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
 plot
 ```
 
-<img src="report_files/figure-gfm/unnamed-chunk-15-1.png" style="display: block; margin: auto;" />
+<img src="figuresunnamed-chunk-15-1.png" style="display: block; margin: auto;" />
 
 ## Discussion
 
