@@ -82,74 +82,93 @@ model
 #> 
 #>    return convolved_cases;
 #>   }
+#> 
+#>   real discretised_lognormal_pmf(int y, real mu, real sigma) {
+#> 
+#>     return((lognormal_cdf(y, mu, sigma) - lognormal_cdf(y - 1, mu, sigma)));
+#>   }
 #> }
 #> 
 #> 
 #> data {
 #>   int t; // number of time steps
-#>   int d; 
-#>   int inc; 
-#>   int samples;
-#>   int wkd[t];
-#>   int mon[t];
+#>   int max_rep; 
+#>   int max_inc; 
+#>   int day_of_week[t];
 #>   int <lower = 0> cases[t];
 #>   vector<lower = 0>[t] shifted_cases; 
+#>   real inc_mean_sd;                  // prior sd of mean incubation period
+#>   real inc_mean_mean;                // prior mean of mean incubation period
+#>   real inc_sd_mean;                  // prior sd of sd of incubation period
+#>   real inc_sd_sd;                    // prior sd of sd of incubation period
+#>   real rep_mean_mean;                // prior mean of mean reporting delay
+#>   real rep_mean_sd;                  // prior sd of mean reporting delay
+#>   real rep_sd_mean;                  // prior mean of sd of reporting delay
+#>   real rep_sd_sd;                    // prior sd of sd of reporting delay
 #>   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
-#>   vector[d] delay[samples]; 
-#>   vector[inc] incubation[samples];
 #> }
 #> 
 #> transformed data{
-#>   vector[d] rev_delay[samples];
-#>   vector[inc] rev_incubation[samples];
-#>   //Reverse the distributions to allow vectorised access
-#>   for (h in 1:samples) {
-#>     for (j in 1:d) {
-#>       rev_delay[h][j] = delay[h][d - j + 1];
-#>     }
-#>    
-#>     for (j in 1:inc) {
-#>       rev_incubation[h][j] = incubation[h][inc - j + 1];
-#>     }
-#>   }
+#>   int total_cases;
+#>   
+#>   total_cases = sum(cases); //Total cases
 #>   
 #> }
 #> 
 #> parameters{
 #>   vector<lower = 0>[t] noise;
+#>   real <lower = 0> inc_mean;         // mean of incubation period
+#>   real <lower = 0> inc_sd;           // sd of incubation period
+#>   real <lower = 0> rep_mean;         // mean of reporting delay
+#>   real <lower = 0> rep_sd;           // sd of incubation period
 #>   real<lower = 0> phi; 
-#>   real wkd_eff;
-#>   real mon_eff;
+#>   vector[6] day_of_week_eff_raw;
 #> }
 #> 
 #> transformed parameters {
+#>   vector[max_rep] rev_delay;
+#>   vector[max_inc] rev_incubation;
 #>   vector<lower = 0>[t] infections;
-#>   vector<lower = 0>[t] onsets[samples];
-#>   vector<lower = 0>[t] reports[samples];
+#>   vector<lower = 0>[t] onsets;
+#>   vector<lower = 0>[t] reports;
+#>   vector[7] day_of_week_eff;
 #>   
+#>   //Constrain day of week to sum to 0
+#>   day_of_week_eff = 1 + append_row(day_of_week_eff_raw, -sum(day_of_week_eff_raw));
+#>   
+#>   //Reverse the distributions to allow vectorised access
+#>     for (j in 1:max_rep) {
+#>       rev_delay[j] =
+#>         discretised_lognormal_pmf(max_rep - j + 1, inc_mean, inc_sd);
+#>         }
+#>    
+#>     for (j in 1:max_inc) {
+#>       rev_incubation[j] =
+#>         discretised_lognormal_pmf(max_inc - j + 1, rep_mean, rep_sd);
+#>     }
+#> 
 #>   //Generation infections from median shifted cases and non-parameteric noise
 #>   infections = shifted_cases .* noise;
 #> 
 #>   
-#>   for(h in 1:samples) {
-#>      // Onsets from infections
-#>      onsets[h] = convolve(infections, rev_incubation[h]);
+#>   // Onsets from infections
+#>   onsets = convolve(infections, rev_incubation);
 #>      
-#>      // Reports from onsets
-#>      reports[h] = convolve(onsets[h], rev_delay[h]);
+#>   // Reports from onsets
+#>   reports = convolve(onsets, rev_delay);
 #>      
-#>      // Add reporting effects
-#>   //   for (s in 1:t) {
-#>   //      reports[h, s] = reports[h, s] + (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
-#>   //   }
-#>   }
+#>   // Add reporting effects
+#>   for (s in 1:t) {
+#>       reports[s] = reports[s] + day_of_week_eff[day_of_week[s]];
+#>     }
 #> }
 #> 
 #> model {
-#>   // Week effects
-#>   wkd_eff ~ normal(0, 0.05);
-#>   mon_eff ~ normal(0, 0.05);
-#>   
+#>   // Week effect - upweighted by overall time
+#>   for (j in 1:6) {
+#>     day_of_week_eff_raw[j] ~ normal(0, 0.2) T[-1,];
+#>   }
+#> 
 #>   // Reporting overdispersion
 #>   phi ~ exponential(1);
 #> 
@@ -158,15 +177,18 @@ model
 #>     noise[i] ~ normal(1, 0.2) T[0,];
 #>   }
 #>   
-#>   for (h in 1:samples) {
-#>     // Log likelihood of reports
-#>      if (model_type == 1) {
-#>        target +=  poisson_lpmf(cases | reports[h]);
-#>      }else{
-#>        target += neg_binomial_2_lpmf(cases | reports[h], phi);
-#>      }
+#>   // Log likelihood of reports
+#>   if (model_type == 1) {
+#>     target +=  poisson_lpmf(cases | reports);
+#>   }else{
+#>     target += neg_binomial_2_lpmf(cases | reports, phi);
 #>   }
 #> 
+#>   // penalised priors
+#>   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * total_cases;
+#>   target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * total_cases;
+#>   target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * total_cases;
+#>   target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * total_cases;
 #> }
 #>   
 #> generated quantities {
@@ -216,38 +238,50 @@ generation_interval
 ```
 
 ``` r
+incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
+                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
+                           sd = EpiNow::covid_incubation_period[1, ]$sd,
+                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
+                           max = 30)
+                    
+reporting_delay <- list(mean = log(5),
+                         mean_sd = log(1.1),
+                         sd = log(2),
+                         sd_sd = log(1.2),
+                         max = 30)
+
 ## Sample a report delay as a lognormal - take 10 samples
-delay_defs <- EpiNow::lognorm_dist_def(mean = 5, mean_sd = 1,
-                                      sd = 3, sd_sd = 1, max_value = 30,
-                                      to_log = TRUE, samples = 10)
+delay_defs <- EpiNow::lognorm_dist_def(mean = reporting_delay$mean, mean_sd = reporting_delay$mean_sd,
+                                       sd = reporting_delay$sd, sd_sd = reporting_delay$sd_sd,
+                                       max_value = reporting_delay$max, samples = 1000)
 
 
 ## Sample a incubation period (again using the default for covid) - take 10 samples
-incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_period[1, ]$mean,
-                                           mean_sd = EpiNow::covid_incubation_period[1, ]$mean_sd,
-                                           sd = EpiNow::covid_incubation_period[1, ]$sd,
-                                           sd_sd = EpiNow::covid_incubation_period[1, ]$sd_sd,
-                                           max_value = 30, samples = 10)
+incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
+                                           mean_sd = incubation_period$mean_sd,
+                                           sd = incubation_period$sd,
+                                           sd_sd = incubation_period$sd_sd,
+                                           max_value = 30, samples = 1000)
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
 simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_interval, delay_def = delay_defs[1, ],
                                           incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.2, rep(1, 4), 0.9, 0.9))
+                                          reporting_effect = c(1.4, rep(1, 4), 0.8, 0.8))
 simulated_cases
 #>            date cases reference
-#>   1: 2020-03-02    42 infection
-#>   2: 2020-03-03    70 infection
-#>   3: 2020-03-04    91 infection
-#>   4: 2020-03-05    99 infection
-#>   5: 2020-03-06   143 infection
+#>   1: 2020-03-02    40 infection
+#>   2: 2020-03-03    59 infection
+#>   3: 2020-03-04    71 infection
+#>   4: 2020-03-05    87 infection
+#>   5: 2020-03-06   115 infection
 #>  ---                           
-#> 178: 2020-04-27   868    report
-#> 179: 2020-04-28   847    report
-#> 180: 2020-04-29   857    report
-#> 181: 2020-04-30   846    report
-#> 182: 2020-05-01   715    report
+#> 177: 2020-04-27  1234    report
+#> 178: 2020-04-28   814    report
+#> 179: 2020-04-29   798    report
+#> 180: 2020-04-30   795    report
+#> 181: 2020-05-01   792    report
 ```
 
 ### Compare approaches on simulated data
@@ -263,19 +297,19 @@ generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
                                    target_date = max(simulated_reports$date),
-                                   delay_defs = delay_defs[1,][, cbind(.SD, sample = 1:1000)],
-                                   incubation_defs = incubation_defs[1,][, cbind(.SD, sample = 1:1000)],
+                                   delay_defs = delay_defs,
+                                   incubation_defs = incubation_defs,
                                    nowcast_lag = 0, approx_delay = TRUE)
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "poisson", delay_defs = delay_defs[1,], 
-                                incubation_defs = incubation_defs[1,], 
-                                generation_interval = generation_interval, cores = 2,
-                                return_all = TRUE, model = model)
+                                family = "poisson", incubation_period = incubation_period,
+                                reporting_delay = reporting_delay,
+                                generation_interval = generation_interval, cores = 4, chains = 4,
+                                samples = 1000, return_all = TRUE, model = model)
 ```
 
-### Compare approaches on reported Covid-19 cases in the United Kingdom, United States of America and South Korea
+### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
 
   - Get
 data
@@ -306,17 +340,19 @@ results <- lapply(countries,
         ## Reconstruction via backwards sampling
         sampling_cases <- nowcast_pipeline(reported_cases = cases[, import_status := "local"], 
                                            target_date = max(cases$date),
-                                           delay_defs = delay_defs[, cbind(.SD, sample = 1:100)],
-                                           incubation_defs = incubation_defs[, cbind(.SD, sample = 1:100)],
+                                           delay_defs = delay_defs,
+                                           incubation_defs = incubation_defs,
                                            approx_delay = TRUE)
         
         message("Non-parametric nowcasting for: ", country)
         ## Non-parametric reconstruction
         non_parametric_cases <- nowcast(cases,
                                         family = "poisson",
-                                        delay_defs = delay_defs, incubation_defs = incubation_defs,
-                                        generation_interval = generation_interval, cores = 1,
-                                        return_all = TRUE, model = model)
+                                         incubation_period = incubation_period,
+                                         reporting_delay = reporting_delay,
+                                         generation_interval = generation_interval, 
+                                         samples = 1000, cores = 4, chains = 4,
+                                         return_all = TRUE, model = model)
         
         return(list(sampling_cases, non_parametric_cases))
                                        })
@@ -334,13 +370,43 @@ names(results) <- countries
 <!-- end list -->
 
 ``` r
-summary(non_parametric_cases$wkd_eff$value)
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1739073 -0.0350632 -0.0019067 -0.0002553  0.0356082  0.1918659
+non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
+#>         wday          Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
+#> 1:    Monday  0.5472302474 1.0945078 1.2196821 1.2140842 1.3385553 1.884797
+#> 2:   Tuesday  0.4122134039 0.9664770 1.0913634 1.0931463 1.2138123 1.738971
+#> 3: Wednesday  0.5434869617 1.0355248 1.1599328 1.1613311 1.2841458 1.837412
+#> 4:  Thursday  0.3825441517 0.9342926 1.0584804 1.0623427 1.1941808 1.697699
+#> 5:    Friday  0.3958615607 0.9106349 1.0386392 1.0382937 1.1681974 1.653830
+#> 6:  Saturday  0.4071766647 0.8509312 0.9603956 0.9677935 1.0834213 1.633618
+#> 7:    Sunday -0.0005181711 0.2090307 0.4165247 0.4630084 0.6712098 2.026004
+```
 
-summary(non_parametric_cases$mon_eff$value)
-#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
-#> -0.151298 -0.029964  0.001329  0.001196  0.032267  0.152475
+  - Recover reporting delays
+
+<!-- end list -->
+
+``` r
+non_parametric_cases$rep_mean[, .(mean = mean(value), sd = sd(value))]
+#>        mean           sd
+#> 1: 1.609207 0.0003674118
+
+non_parametric_cases$rep_sd[, .(mean = mean(value), sd = sd(value))]
+#>         mean           sd
+#> 1: 0.6932067 0.0006540648
+```
+
+  - Recover incubation period
+
+<!-- end list -->
+
+``` r
+non_parametric_cases$inc_mean[, .(mean = mean(value), sd = sd(value))]
+#>        mean           sd
+#> 1: 1.620881 0.0002405717
+
+non_parametric_cases$inc_sd[, .(mean = mean(value), sd = sd(value))]
+#>         mean           sd
+#> 1: 0.4179915 0.0002528089
 ```
 
   - Prepare data for
@@ -410,54 +476,56 @@ plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = typ
 plot
 ```
 
-<img src="figuresunnamed-chunk-11-1.png" style="display: block; margin: auto;" />
+<img src="figures/unnamed-chunk-13-1.png" style="display: block; margin: auto;" />
 
 ### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea
 
-  - Explore weekend reporting effects by country
+  - Explore reporting effects by
+country
 
 <!-- end list -->
 
 ``` r
-purrr::map(results, ~ summary(.[[2]]$wkd_eff$value))
+purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 #> $Austria
-#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
-#> -0.163008 -0.030246  0.001576  0.001307  0.033514  0.164379 
+#>         wday        Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
+#> 1:    Monday 0.203921539 0.6977322 0.8273898 0.8275279 0.9585292 1.430634
+#> 2:   Tuesday 0.212585771 0.8635706 0.9842692 0.9844532 1.1093359 1.707172
+#> 3: Wednesday 0.468760962 0.9618414 1.0780788 1.0795202 1.1968583 1.687708
+#> 4:  Thursday 0.242187163 0.8109178 0.9446312 0.9401582 1.0668435 1.688327
+#> 5:    Friday 0.517459796 0.9858428 1.1149368 1.1116641 1.2378995 1.771132
+#> 6:  Saturday 0.536824823 1.0369854 1.1645164 1.1641848 1.2894801 1.785860
+#> 7:    Sunday 0.006702437 0.6402925 0.8830235 0.8924917 1.1372663 2.062368
 #> 
 #> $`United Kingdom`
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1517488 -0.0349511  0.0005338  0.0003938  0.0353042  0.1518393 
+#>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
+#> 1:    Monday 0.4186566 0.9974603 1.0272991 1.0583414 1.1476960 1.828399
+#> 2:   Tuesday 0.2458453 0.7716367 0.9141298 0.8749597 0.9637928 1.414609
+#> 3: Wednesday 0.1521930 0.7172490 0.8576290 0.8174040 0.8874698 1.424750
+#> 4:  Thursday 0.0524984 0.8674008 1.0293289 1.0215632 1.2328497 1.654306
+#> 5:    Friday 0.3923364 0.8949589 0.9361868 0.9632365 1.0543917 1.770535
+#> 6:  Saturday 0.2893985 0.8442183 1.0003801 0.9638488 1.0888727 1.542671
+#> 7:    Sunday 0.2192646 0.9204460 1.2440093 1.3006464 1.5939571 3.056969
 #> 
 #> $`United States of America`
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1826221 -0.0337627 -0.0011328 -0.0003989  0.0347389  0.1570095 
+#>         wday        Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
+#> 1:    Monday  0.43169846 0.8781315 0.9486829 0.9897660 1.1047992 1.683629
+#> 2:   Tuesday  0.46910565 0.9890050 1.0513251 1.0656711 1.1513993 1.806587
+#> 3: Wednesday  0.14860598 0.8050235 0.9714220 0.9463835 1.1246708 1.470592
+#> 4:  Thursday  0.25380859 0.8907785 1.0518644 0.9971695 1.0763650 1.587378
+#> 5:    Friday  0.40022850 0.9528737 0.9613496 1.0198621 1.1194410 1.744988
+#> 6:  Saturday  0.65193150 1.1692464 1.2611669 1.2959444 1.4149632 1.994529
+#> 7:    Sunday -0.03662948 0.4770890 0.7473808 0.6852034 0.7921001 1.921429
 #> 
 #> $Russia
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1563835 -0.0330590 -0.0014323 -0.0008635  0.0314774  0.1556434
-```
-
-  - Explore monday reporting effects by country
-
-<!-- end list -->
-
-``` r
-purrr::map(results, ~ summary(.[[2]]$mon_eff$value))
-#> $Austria
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -1.573e-01 -3.158e-02  3.645e-04 -6.313e-05  3.227e-02  1.550e-01 
-#> 
-#> $`United Kingdom`
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1561774 -0.0373820  0.0004951 -0.0005746  0.0345032  0.1556001 
-#> 
-#> $`United States of America`
-#>      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
-#> -0.164238 -0.036029  0.001129 -0.000843  0.034587  0.179298 
-#> 
-#> $Russia
-#>       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
-#> -0.1430047 -0.0331486  0.0004139  0.0010628  0.0358330  0.1529342
+#>         wday        Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
+#> 1:    Monday 0.208517923 0.8816462 1.0416315 0.9830661 1.0492955 1.730430
+#> 2:   Tuesday 0.382022585 0.8444634 1.0245058 0.9744264 1.0830524 1.547434
+#> 3: Wednesday 0.343449654 0.8587513 1.0184822 0.9619894 1.0290466 1.550933
+#> 4:  Thursday 0.482989167 1.0870987 1.1915234 1.1700374 1.2413825 1.825716
+#> 5:    Friday 0.366789472 0.8657412 0.9733470 1.0045423 1.1350429 1.628436
+#> 6:  Saturday 0.656350838 1.1727231 1.2329577 1.2534649 1.3409145 2.025497
+#> 7:    Sunday 0.003628558 0.4839330 0.5563301 0.6524736 0.8323179 2.032958
 ```
 
   - Prepare data for
@@ -499,7 +567,7 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
 plot
 ```
 
-<img src="figuresunnamed-chunk-15-1.png" style="display: block; margin: auto;" />
+<img src="figures/unnamed-chunk-16-1.png" style="display: block; margin: auto;" />
 
 ## Discussion
 

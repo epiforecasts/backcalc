@@ -42,13 +42,6 @@ data {
   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
 }
 
-transformed data{
-  int total_cases;
-  
-  total_cases = sum(cases); //Total cases
-  
-}
-
 parameters{
   vector<lower = 0>[t] noise;
   real <lower = 0> inc_mean;         // mean of incubation period
@@ -56,7 +49,7 @@ parameters{
   real <lower = 0> rep_mean;         // mean of reporting delay
   real <lower = 0> rep_sd;           // sd of incubation period
   real<lower = 0> phi; 
-  vector[6] day_of_week_eff_raw;
+  vector[7] day_of_week_eff;
 }
 
 transformed parameters {
@@ -65,11 +58,7 @@ transformed parameters {
   vector<lower = 0>[t] infections;
   vector<lower = 0>[t] onsets;
   vector<lower = 0>[t] reports;
-  vector[7] day_of_week_eff;
-  
-  //Constrain day of week to sum to 0
-  day_of_week_eff = 1 + append_row(day_of_week_eff_raw, -sum(day_of_week_eff_raw));
-  
+
   //Reverse the distributions to allow vectorised access
     for (j in 1:max_rep) {
       rev_delay[j] =
@@ -99,8 +88,8 @@ transformed parameters {
 
 model {
   // Week effect - upweighted by overall time
-  for (j in 1:6) {
-    day_of_week_eff_raw[j] ~ normal(0, 0.2) T[-1,];
+  for (j in 1:7) {
+    day_of_week_eff[j] ~ normal(1, 0.1) T[0,];
   }
 
   // Reporting overdispersion
@@ -119,10 +108,10 @@ model {
   }
 
   // penalised priors
-  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * total_cases;
-  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * total_cases;
-  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * total_cases;
-  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * total_cases;
+  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
+  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * t;
+  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * t;
+  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * t;
 }
   
 generated quantities {
