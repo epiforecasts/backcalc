@@ -36,7 +36,7 @@
 #' out <- nowcast(reported_cases, family = "poisson",
 #'                delay_defs = delay_defs, incubation_defs = incubation_defs,
 #'                generation_interval = generation_interval,
-#'                verbose = TRUE,
+#'                verbose = TRUE, batch = FALSE
 #'                inc_mean_mean = inc_mean_mean,
 #'                inc_mean_sd = inc_mean_sd,
 #'                inc_sd_mean = inc_sd_mean,
@@ -168,7 +168,6 @@ nowcast <- function(reported_cases, family = "poisson",
     t = length(reported_cases$date),
     d = ncol(delay_pdfs),
     inc = ncol(incubation_pdfs),
-    samples = nrow(delay_pdfs),
     inc_mean_mean = inc_mean_mean,
     inc_mean_sd = inc_mean_sd,
     inc_sd_mean = inc_sd_mean,
@@ -201,7 +200,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
 
   
   if (verbose) {
-    message(paste0("Running for ",data$samples," samples and ", data$t," time steps"))
+    message(paste0("Running for ",samples + warmup," samples and ", data$t," time steps"))
   }
   
   run_model <- function(data) { 
@@ -210,7 +209,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                            data = data,
                            chains = chains,
                            init = init_fun,
-                           iter = round(samples / (chains *  nrow(delay_pdfs))) + warmup, 
+                           iter = samples + warmup, 
                            warmup = warmup,
                            cores = cores,
                            refresh = ifelse(verbose, 50, 0)))

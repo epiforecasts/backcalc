@@ -29,7 +29,6 @@ data {
   int t; // number of time steps
   int d; 
   int inc; 
-  int samples;
   int day_of_week[t];
   int <lower = 0> cases[t];
   vector<lower = 0>[t] shifted_cases; 
@@ -42,6 +41,13 @@ data {
   real rep_sd_mean;                  // prior mean of sd of reporting delay
   real rep_sd_sd;                    // prior sd of sd of reporting delay
   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
+}
+
+transformed data{
+  int total_cases;
+  
+  total_cases = sum(cases); //Total cases
+  
 }
 
 parameters{
@@ -106,21 +112,19 @@ model {
     noise[i] ~ normal(1, 0.2) T[0,];
   }
   
-  for (h in 1:samples) {
     // Log likelihood of reports
      if (model_type == 1) {
-       target +=  poisson_lpmf(cases | reports[h]);
+       target +=  poisson_lpmf(cases | reports);
      }else{
-       target += neg_binomial_2_lpmf(cases | reports[h], phi);
+       target += neg_binomial_2_lpmf(cases | reports, phi);
      }
-  }
 
 
   // penalised priors
-  target += sum(cases) * normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd);
-  target += sum(cases) * normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd);
-  target += sum(cases) * normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd);
-  target += sum(cases) * normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd);
+  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) / total_cases;
+  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) / total_cases;
+  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) / total_cases;
+  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) / total_cases;
 
 }
   
