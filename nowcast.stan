@@ -24,8 +24,7 @@ data {
   int d; 
   int inc; 
   int samples;
-  int wkd[t];
-  int mon[t];
+  int day_of_week[t];
   int <lower = 0> cases[t];
   vector<lower = 0>[t] shifted_cases; 
   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
@@ -52,14 +51,17 @@ transformed data{
 parameters{
   vector<lower = 0>[t] noise;
   real<lower = 0> phi; 
-  real wkd_eff;
-  real mon_eff;
+  vector[6] day_of_week_eff_raw;
 }
 
 transformed parameters {
   vector<lower = 0>[t] infections;
   vector<lower = 0>[t] onsets[samples];
   vector<lower = 0>[t] reports[samples];
+  vector[7] day_of_week_eff;
+  
+  //Constrain day of week to sum to 0
+  day_of_week_eff = 1 + append_row(day_of_week_eff_raw, -sum(day_of_week_eff_raw));
   
   //Generation infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
@@ -72,18 +74,19 @@ transformed parameters {
      // Reports from onsets
      reports[h] = convolve(onsets[h], rev_delay[h]);
      
-     // Add reporting effects
-  //   for (s in 1:t) {
-  //      reports[h, s] = reports[h, s] + (1 + (wkd_eff * wkd[s]) + (mon_eff * mon[s]));
-  //   }
+  // Add reporting effects
+    for (s in 1:t) {
+       reports[h, s] = reports[h, s] + day_of_week_eff[day_of_week[s]];
+    }
   }
 }
 
 model {
-  // Week effects
-  wkd_eff ~ normal(0, 0.05);
-  mon_eff ~ normal(0, 0.05);
-  
+  // Week effect
+  for (j in 1:6) {
+      day_of_week_eff_raw[j] ~ normal(0, 0.1) T[-1,];
+  }
+
   // Reporting overdispersion
   phi ~ exponential(1);
 

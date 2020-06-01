@@ -133,14 +133,13 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Add week day info -------------------------------------------------------
 
-  reported_cases <- reported_cases[, weekday := lubridate::wday(date, week_start = 1)][,
-                                     `:=`(wkd = ifelse(weekday >= 6, 1, 0),
-                                          mon = ifelse(weekday == 1, 1, 0))]
+  reported_cases <- reported_cases[, day_of_week := lubridate::wday(date, week_start = 1)][,
+                                     `:=`(wkd = ifelse(day_of_week >= 6, 1, 0),
+                                          mon = ifelse(day_of_week == 1, 1, 0))]
 # Define stan model parameters --------------------------------------------
 
   data <- list(
-    wkd = reported_cases$wkd, 
-    mon = reported_cases$mon,
+    day_of_week = reported_cases$day_of_week,
     cases = reported_cases$confirm,
     shifted_cases = shifted_reported_cases$confirm,
     delay = delay_pdfs,
@@ -162,8 +161,7 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
-                            wkd_eff = rnorm(1, 0, 0.05),
-                            mon_eff = rnorm(1, 0, 0.05),
+                            day_of_week_eff_raw = rnorm(6, 0, 0.1),
                             phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
@@ -212,8 +210,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
         data.table::melt(param_df, id.vars = "time",
                          variable.name = "var")
       
-      param_df <- param_df[, var := NULL][,
-                                          sample := 1:.N, by = .(time)]
+      param_df <- param_df[, var := NULL][, sample := 1:.N, by = .(time)]
       param_df <- param_df[, date := dates, by = .(sample)]
       param_df <- param_df[, .(parameter = param, time, date, 
                                sample, value)]
@@ -231,15 +228,17 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                                      samples,
                                      reported_cases$date)
       
-      out$wkd_eff <- data.table::data.table(
-        parameter = "wkd_eff",
-        sample = 1:length(samples$wkd_eff),
-        value = samples$wkd_eff)
+      out$day_of_week <- extract_parameter("day_of_week_eff", 
+                                           samples,
+                                           1:7)
       
-      out$mon_eff <- data.table::data.table(
-        parameter = "mon_eff",
-        sample = 1:length(samples$mon_eff),
-        value = samples$mon_eff)
+      char_day_of_week <- data.table::data.table(wday = c("Monday", "Tuesday", "Wednesday",
+                                                          "Thursday", "Friday", "Saturday",
+                                                          "Sunday"),
+                                                 time = 1:7)
+      out$day_of_week <- out$day_of_week[char_day_of_week, on = "time"][, 
+                                         wday_numeric := time][, 
+                                         time := NULL]
   
       out$fit <- fit
     }
@@ -284,8 +283,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
     if (return_all) { 
       out$prior_infections <- out$prior_infections[[1]]
       out$noise <- bind_out(out$noise, by_var = "time")
-      out$wkd_eff <- bind_out(out$wkd_eff, by_var = "parameter")
-      out$mon_eff <- bind_out(out$mon_eff, by_var = "parameter")
+      out$day_of_week <- bind_out(out$day_of_week, by_var = "wday")
       }
   }
   

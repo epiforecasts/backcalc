@@ -12,7 +12,7 @@ knitr::opts_chunk$set(
   fig.width = 8, fig.height = 8, 
   fig.align = "center",
   cache = FALSE,
-  fig.path = "figures"
+  fig.path = "figures/"
 )
 ```
 
@@ -116,7 +116,7 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = EpiNow::covid_incubation_peri
 simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_interval, delay_def = delay_defs[1, ],
                                           incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.2, rep(1, 4), 0.9, 0.9))
+                                          reporting_effect = c(1.4, rep(1, 4), 0.8, 0.8))
 simulated_cases
 ```
     
@@ -146,7 +146,7 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 return_all = TRUE, model = model)
 ```
 
-### Compare approaches on reported Covid-19 cases in the United Kingdom, United States of America and South Korea
+### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
 
 * Get data
 
@@ -197,9 +197,7 @@ names(results) <- countries
 * Reporting effects. *We do not recover the supplied reporting effects.*
 
 ```{r}
-summary(non_parametric_cases$wkd_eff$value)
-
-summary(non_parametric_cases$mon_eff$value)
+non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
 ```
 
 * Prepare data for plotting
