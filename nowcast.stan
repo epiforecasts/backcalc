@@ -81,12 +81,12 @@ transformed parameters {
      
   // Add reporting effects
   for (s in 1:t) {
-      reports[s] = reports[s] + day_of_week_eff[day_of_week[s]];
+      reports[s] = reports[s] * day_of_week_eff[day_of_week[s]];
     }
 }
 
 model {
-  // Week effect - upweighted by overall time
+  // Week effect
   for (j in 1:7) {
     day_of_week_eff[j] ~ normal(1, 0.1) T[0,];
   }
