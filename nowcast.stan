@@ -73,7 +73,6 @@ transformed parameters {
   //Generation infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
 
-  
   // Onsets from infections
   onsets = convolve(infections, rev_incubation);
      

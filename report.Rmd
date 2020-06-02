@@ -221,7 +221,6 @@ data.table::rbindlist(list(
   non_parametric_cases$rep_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
   non_parametric_cases$rep_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
-
 ```
 
 * Recover incubation period
@@ -231,7 +230,6 @@ data.table::rbindlist(list(
   non_parametric_cases$inc_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
   non_parametric_cases$inc_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
-
 ```
 
 * Prepare data for plotting

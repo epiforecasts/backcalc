@@ -108,13 +108,6 @@ model
 #>   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
 #> }
 #> 
-#> transformed data{
-#>   int total_cases;
-#>   
-#>   total_cases = sum(cases); //Total cases
-#>   
-#> }
-#> 
 #> parameters{
 #>   vector<lower = 0>[t] noise;
 #>   real <lower = 0> inc_mean;         // mean of incubation period
@@ -122,7 +115,7 @@ model
 #>   real <lower = 0> rep_mean;         // mean of reporting delay
 #>   real <lower = 0> rep_sd;           // sd of incubation period
 #>   real<lower = 0> phi; 
-#>   vector[6] day_of_week_eff_raw;
+#>   vector[7] day_of_week_eff;
 #> }
 #> 
 #> transformed parameters {
@@ -131,11 +124,7 @@ model
 #>   vector<lower = 0>[t] infections;
 #>   vector<lower = 0>[t] onsets;
 #>   vector<lower = 0>[t] reports;
-#>   vector[7] day_of_week_eff;
-#>   
-#>   //Constrain day of week to sum to 0
-#>   day_of_week_eff = 1 + append_row(day_of_week_eff_raw, -sum(day_of_week_eff_raw));
-#>   
+#> 
 #>   //Reverse the distributions to allow vectorised access
 #>     for (j in 1:max_rep) {
 #>       rev_delay[j] =
@@ -150,7 +139,6 @@ model
 #>   //Generation infections from median shifted cases and non-parameteric noise
 #>   infections = shifted_cases .* noise;
 #> 
-#>   
 #>   // Onsets from infections
 #>   onsets = convolve(infections, rev_incubation);
 #>      
@@ -165,8 +153,8 @@ model
 #> 
 #> model {
 #>   // Week effect - upweighted by overall time
-#>   for (j in 1:6) {
-#>     day_of_week_eff_raw[j] ~ normal(0, 0.2) T[-1,];
+#>   for (j in 1:7) {
+#>     day_of_week_eff[j] ~ normal(1, 0.1) T[0,];
 #>   }
 #> 
 #>   // Reporting overdispersion
@@ -185,10 +173,10 @@ model
 #>   }
 #> 
 #>   // penalised priors
-#>   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * total_cases;
-#>   target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * total_cases;
-#>   target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * total_cases;
-#>   target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * total_cases;
+#>   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
+#>   target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * t;
+#>   target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * t;
+#>   target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * t;
 #> }
 #>   
 #> generated quantities {
@@ -268,20 +256,20 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_interval, delay_def = delay_defs[1, ],
                                           incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.4, rep(1, 4), 0.8, 0.8))
+                                          reporting_effect = c(1, rep(1, 4), 1, 1))
 simulated_cases
 #>            date cases reference
-#>   1: 2020-03-02    40 infection
-#>   2: 2020-03-03    59 infection
-#>   3: 2020-03-04    71 infection
-#>   4: 2020-03-05    87 infection
+#>   1: 2020-03-02    45 infection
+#>   2: 2020-03-03    62 infection
+#>   3: 2020-03-04    79 infection
+#>   4: 2020-03-05   112 infection
 #>   5: 2020-03-06   115 infection
 #>  ---                           
-#> 177: 2020-04-27  1234    report
-#> 178: 2020-04-28   814    report
-#> 179: 2020-04-29   798    report
-#> 180: 2020-04-30   795    report
-#> 181: 2020-05-01   792    report
+#> 176: 2020-04-27   723    report
+#> 177: 2020-04-28   685    report
+#> 178: 2020-04-29   712    report
+#> 179: 2020-04-30   719    report
+#> 180: 2020-05-01   695    report
 ```
 
 ### Compare approaches on simulated data
@@ -306,7 +294,8 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 family = "poisson", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_interval = generation_interval, cores = 4, chains = 4,
-                                samples = 1000, return_all = TRUE, model = model)
+                                samples = 1000, return_all = TRUE, model = model, verbose = TRUE)
+#> Running for 2000 samples and 62 time steps
 ```
 
 ### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
@@ -371,14 +360,14 @@ names(results) <- countries
 
 ``` r
 non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
-#>         wday          Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday  0.5472302474 1.0945078 1.2196821 1.2140842 1.3385553 1.884797
-#> 2:   Tuesday  0.4122134039 0.9664770 1.0913634 1.0931463 1.2138123 1.738971
-#> 3: Wednesday  0.5434869617 1.0355248 1.1599328 1.1613311 1.2841458 1.837412
-#> 4:  Thursday  0.3825441517 0.9342926 1.0584804 1.0623427 1.1941808 1.697699
-#> 5:    Friday  0.3958615607 0.9106349 1.0386392 1.0382937 1.1681974 1.653830
-#> 6:  Saturday  0.4071766647 0.8509312 0.9603956 0.9677935 1.0834213 1.633618
-#> 7:    Sunday -0.0005181711 0.2090307 0.4165247 0.4630084 0.6712098 2.026004
+#>         wday      Min.   1st Qu.   Median     Mean  3rd Qu.     Max.
+#> 1:    Monday 0.6531128 0.9389250 1.006474 1.006355 1.075732 1.348900
+#> 2:   Tuesday 0.6705243 0.9460390 1.014237 1.013279 1.078896 1.344906
+#> 3: Wednesday 0.6909572 0.9719831 1.038883 1.039439 1.107212 1.415151
+#> 4:  Thursday 0.6745624 0.9710853 1.036486 1.037105 1.104638 1.363101
+#> 5:    Friday 0.7081111 0.9576162 1.026617 1.026970 1.094591 1.359541
+#> 6:  Saturday 0.6371281 0.9531312 1.018702 1.018458 1.083130 1.387912
+#> 7:    Sunday 0.6373807 0.9477402 1.013375 1.012993 1.078210 1.431345
 ```
 
   - Recover reporting delays
@@ -386,13 +375,13 @@ non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
 <!-- end list -->
 
 ``` r
-non_parametric_cases$rep_mean[, .(mean = mean(value), sd = sd(value))]
-#>        mean           sd
-#> 1: 1.609207 0.0003674118
-
-non_parametric_cases$rep_sd[, .(mean = mean(value), sd = sd(value))]
-#>         mean           sd
-#> 1: 0.6932067 0.0006540648
+data.table::rbindlist(list(
+  non_parametric_cases$rep_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
+  non_parametric_cases$rep_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
+))
+#>    parameter      mean         sd
+#> 1:      mean 1.4433687 0.01065322
+#> 2:        sd 0.6825381 0.02293643
 ```
 
   - Recover incubation period
@@ -400,13 +389,13 @@ non_parametric_cases$rep_sd[, .(mean = mean(value), sd = sd(value))]
 <!-- end list -->
 
 ``` r
-non_parametric_cases$inc_mean[, .(mean = mean(value), sd = sd(value))]
-#>        mean           sd
-#> 1: 1.620881 0.0002405717
-
-non_parametric_cases$inc_sd[, .(mean = mean(value), sd = sd(value))]
-#>         mean           sd
-#> 1: 0.4179915 0.0002528089
+data.table::rbindlist(list(
+  non_parametric_cases$inc_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
+  non_parametric_cases$inc_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
+))
+#>    parameter      mean          sd
+#> 1:      mean 1.5322065 0.007319253
+#> 2:        sd 0.4162286 0.008369779
 ```
 
   - Prepare data for
@@ -459,7 +448,7 @@ plot_data <- simulated_cases[date >= as.Date("2020-03-01")][,
                                                              "Sampled"))]
 plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = type)) +
   ggplot2::geom_col(data = plot_data[type %in% "Simulated infections"],
-                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.5) +
+                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.8) +
   ggplot2::geom_line(data = plot_data[type %in% "Simulated reported cases"],
                       ggplot2::aes(y = median), size = 1.1) +
   ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
@@ -467,7 +456,7 @@ plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = typ
                          alpha = 0.4, size = 1.5) +
  ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
                          ggplot2::aes(ymin = lower, ymax = upper), 
-                         alpha = 0.8, size = 1.5) +
+                         alpha = 0.6, size = 1.5) +
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +
   ggplot2::scale_color_brewer(palette = "Dark2") +
@@ -488,44 +477,44 @@ country
 ``` r
 purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 #> $Austria
-#>         wday        Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.203921539 0.6977322 0.8273898 0.8275279 0.9585292 1.430634
-#> 2:   Tuesday 0.212585771 0.8635706 0.9842692 0.9844532 1.1093359 1.707172
-#> 3: Wednesday 0.468760962 0.9618414 1.0780788 1.0795202 1.1968583 1.687708
-#> 4:  Thursday 0.242187163 0.8109178 0.9446312 0.9401582 1.0668435 1.688327
-#> 5:    Friday 0.517459796 0.9858428 1.1149368 1.1116641 1.2378995 1.771132
-#> 6:  Saturday 0.536824823 1.0369854 1.1645164 1.1641848 1.2894801 1.785860
-#> 7:    Sunday 0.006702437 0.6402925 0.8830235 0.8924917 1.1372663 2.062368
+#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
+#> 1:    Monday 0.6676412 0.9082673 0.9705402 0.9708311 1.033064 1.269980
+#> 2:   Tuesday 0.6823819 0.9412162 1.0115988 1.0114968 1.081092 1.338786
+#> 3: Wednesday 0.6811634 0.9709987 1.0364106 1.0366825 1.101619 1.353460
+#> 4:  Thursday 0.6712391 0.9373902 1.0033408 1.0024368 1.065378 1.320292
+#> 5:    Friday 0.6769254 0.9802820 1.0448640 1.0439294 1.108840 1.441265
+#> 6:  Saturday 0.7380218 0.9883838 1.0544996 1.0545595 1.119756 1.451243
+#> 7:    Sunday 0.6480144 0.9430145 1.0083213 1.0106952 1.079246 1.352951
 #> 
 #> $`United Kingdom`
-#>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.4186566 0.9974603 1.0272991 1.0583414 1.1476960 1.828399
-#> 2:   Tuesday 0.2458453 0.7716367 0.9141298 0.8749597 0.9637928 1.414609
-#> 3: Wednesday 0.1521930 0.7172490 0.8576290 0.8174040 0.8874698 1.424750
-#> 4:  Thursday 0.0524984 0.8674008 1.0293289 1.0215632 1.2328497 1.654306
-#> 5:    Friday 0.3923364 0.8949589 0.9361868 0.9632365 1.0543917 1.770535
-#> 6:  Saturday 0.2893985 0.8442183 1.0003801 0.9638488 1.0888727 1.542671
-#> 7:    Sunday 0.2192646 0.9204460 1.2440093 1.3006464 1.5939571 3.056969
+#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
+#> 1:    Monday 0.7170574 0.9729175 1.0333132 1.0360217 1.098460 1.337587
+#> 2:   Tuesday 0.6920269 0.9007676 0.9660277 0.9710540 1.038142 1.361025
+#> 3: Wednesday 0.6136879 0.8990833 0.9685049 0.9675503 1.031976 1.282991
+#> 4:  Thursday 0.6608970 0.9325952 1.0063383 1.0020748 1.070177 1.293154
+#> 5:    Friday 0.6775243 0.9407865 1.0037941 1.0014117 1.065738 1.332668
+#> 6:  Saturday 0.6342760 0.8941373 0.9582596 0.9606533 1.019865 1.288180
+#> 7:    Sunday 0.5559364 0.9443237 1.0097812 1.0065518 1.072582 1.338212
 #> 
 #> $`United States of America`
-#>         wday        Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday  0.43169846 0.8781315 0.9486829 0.9897660 1.1047992 1.683629
-#> 2:   Tuesday  0.46910565 0.9890050 1.0513251 1.0656711 1.1513993 1.806587
-#> 3: Wednesday  0.14860598 0.8050235 0.9714220 0.9463835 1.1246708 1.470592
-#> 4:  Thursday  0.25380859 0.8907785 1.0518644 0.9971695 1.0763650 1.587378
-#> 5:    Friday  0.40022850 0.9528737 0.9613496 1.0198621 1.1194410 1.744988
-#> 6:  Saturday  0.65193150 1.1692464 1.2611669 1.2959444 1.4149632 1.994529
-#> 7:    Sunday -0.03662948 0.4770890 0.7473808 0.6852034 0.7921001 1.921429
+#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
+#> 1:    Monday 0.7043513 0.9566500 1.0197883 1.0149411 1.086477 1.325957
+#> 2:   Tuesday 0.6052378 0.9368829 1.0032742 0.9977316 1.064806 1.276176
+#> 3: Wednesday 0.6636453 0.9150954 0.9792785 0.9788117 1.041976 1.303144
+#> 4:  Thursday 0.6673683 0.9285620 0.9892827 0.9901722 1.046135 1.352933
+#> 5:    Friday 0.6380658 0.9108173 0.9779014 0.9751748 1.045234 1.269551
+#> 6:  Saturday 0.7440121 0.9582427 1.0355591 1.0295605 1.097019 1.332505
+#> 7:    Sunday 0.5485954 0.9078415 0.9637312 0.9698021 1.032676 1.376006
 #> 
 #> $Russia
-#>         wday        Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.208517923 0.8816462 1.0416315 0.9830661 1.0492955 1.730430
-#> 2:   Tuesday 0.382022585 0.8444634 1.0245058 0.9744264 1.0830524 1.547434
-#> 3: Wednesday 0.343449654 0.8587513 1.0184822 0.9619894 1.0290466 1.550933
-#> 4:  Thursday 0.482989167 1.0870987 1.1915234 1.1700374 1.2413825 1.825716
-#> 5:    Friday 0.366789472 0.8657412 0.9733470 1.0045423 1.1350429 1.628436
-#> 6:  Saturday 0.656350838 1.1727231 1.2329577 1.2534649 1.3409145 2.025497
-#> 7:    Sunday 0.003628558 0.4839330 0.5563301 0.6524736 0.8323179 2.032958
+#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
+#> 1:    Monday 0.6252180 0.8916495 0.9574409 0.9561427 1.022383 1.306335
+#> 2:   Tuesday 0.6218777 0.8865631 0.9546156 0.9530230 1.020383 1.272346
+#> 3: Wednesday 0.6233002 0.8816429 0.9505116 0.9508674 1.017215 1.336985
+#> 4:  Thursday 0.6596167 0.9356895 1.0055498 1.0048379 1.072138 1.359064
+#> 5:    Friday 0.6163192 0.9119753 0.9807886 0.9794271 1.047413 1.310278
+#> 6:  Saturday 0.6841621 0.9678324 1.0354739 1.0354877 1.103153 1.349413
+#> 7:    Sunday 0.5749125 0.8910831 0.9597149 0.9593049 1.028179 1.341275
 ```
 
   - Prepare data for
