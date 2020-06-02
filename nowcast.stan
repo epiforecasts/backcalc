@@ -3,13 +3,13 @@ functions {
   vector convolve(vector cases, vector pdf) {
     int t = num_elements(cases);
     matrix[t, t] delay_mat = rep_matrix(0, t, t);
-    int max_pdf = num_elements(pdf);
-    row_vector[max_pdf] row_pdf = to_row_vector(pdf);
+    int max_pdf = num_elements(pdf) + 1;
+    row_vector[max_pdf] row_pdf = to_row_vector(append_row(pdf, 0.0));
     vector[t] convolved_cases;
     
     for (s in 1:t) {
       int max_length = min(s, max_pdf);
-      delay_mat[s, (s - max_length + 1):(s - 1)] = row_pdf[(max_pdf - max_length + 1):max_pdf];
+      delay_mat[s, (s - max_length + 1):s] = row_pdf[(max_pdf - max_length + 1):max_pdf];
     }
   
    convolved_cases = delay_mat * to_vector(cases);
@@ -23,12 +23,12 @@ functions {
   }
   
   
-    real discretised_gamma_pmf(int y, real mu, real sigma) {
-
+  real discretised_gamma_pmf(int y, real mu, real sigma) {
+    
     // calculate alpha and beta for gamma distribution
     real alpha = (mu / sigma)^2;
     real beta = (sigma^2) / mu;
-  
+    
     return((lognormal_cdf(y, alpha, beta) - lognormal_cdf(y - 1, alpha, beta)));
   }
 }
@@ -56,14 +56,14 @@ data {
   real gt_sd_mean;                   // prior sd of sd of generation time
   real gt_sd_sd;                     // prior sd of sd of generation time
   int max_gt;                        // maximum generation time
-  int model_type;                    //type of model: 1 = poisson otherwise negative binomial
+  int model_type;                    // type of model: 1 = poisson otherwise negative binomial
 }
 
 transformed data{
   int<lower = 0> weekly_cases[t];    // weekly observed cases
   int<lower = 0> cum_cases[t];       // cumulative cases
-  real r_alpha;                      //alpha parameter of the R gamma prior
-  real r_beta;                       //beta parameter of the R gamma prior
+  real r_alpha;                      // alpha parameter of the R gamma prior
+  real r_beta;                       // beta parameter of the R gamma prior
 
   // calculate alpha and beta for gamma distribution
   r_alpha = (r_mean / r_sd)^2;
@@ -87,8 +87,8 @@ parameters{
   real<lower = 0> rep_phi;           // overdispersion of the reporting process
   vector[7] day_of_week_eff;         // day of week reporting effect
   vector<lower = 0>[t] R;            // effective reproduction number over time
-  real <lower = 0> gt_mean;         // mean of generation time
-  real <lower = 0> gt_sd;           // sd of generation time 
+  real <lower = 0> gt_mean;          // mean of generation time
+  real <lower = 0> gt_sd;            // sd of generation time 
   real<lower = 0> inf_phi;           // overdispersion of the infection process
 }
 
