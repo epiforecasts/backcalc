@@ -41,6 +41,10 @@ data {
   int max_rep;                       // maximum report delay
   real <lower = 0> r_mean;           // prior mean of reproduction number
   real <lower = 0> r_sd;             // prior standard deviation of reproduction number
+  real gt_mean_sd;                  // prior sd of mean generation time
+  real gt_mean_mean;                // prior mean of mean generation time
+  real gt_sd_mean;                  // prior sd of sd of generation time
+  real gt_sd_sd;                    // prior sd of sd of generation time
   int model_type;                    //type of model: 1 = poisson otherwise negative binomial
 }
 
@@ -69,8 +73,12 @@ parameters{
   real <lower = 0> inc_sd;           // sd of incubation period
   real <lower = 0> rep_mean;         // mean of reporting delay
   real <lower = 0> rep_sd;           // sd of incubation period
-  real<lower = 0> rep_phi;               // overdispersion of the reporting process
+  real<lower = 0> rep_phi;           // overdispersion of the reporting process
   vector[7] day_of_week_eff;         // day of week reporting effect
+  vector<lower = 0>[t] R;            // effective reproduction number over time
+  real <lower = 0> gt_mean;         // mean of generation time
+  real <lower = 0> gt_sd;           // sd of generation time 
+  real<lower = 0> inf_phi;           // overdispersion of the infection process
 }
 
 transformed parameters {
@@ -97,6 +105,9 @@ transformed parameters {
   // generate infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
 
+  // infectiousness from infections
+  infectiousness = convolve(infections, rev_generation_time);
+  
   // onsets from infections
   onsets = convolve(infections, rev_incubation);
      
@@ -123,7 +134,7 @@ model {
   // reporting overdispersion
   rep_phi ~ exponential(1);
 
-  // noise on median shift
+  // noise on median shift of reported cases for cases by date of infection
   for (i in 1:t) {
     noise[i] ~ normal(1, 0.5) T[0,];
   }
@@ -135,15 +146,34 @@ model {
     target += neg_binomial_2_lpmf(cases | reports, rep_phi);
   }
   
-  // weekly cases given weekly reports
+  // weekly cases given weekly reports (penalises day of week effect)
   target += poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
 
 
-  // penalised priors
+  // penalised priors for incubation period, and report delay
   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
   target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * t;
   target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * t;
   target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * t;
+  
+  
+  // initial prior on R
+  R[1] ~ gamma(r_alpha, r_beta);
+  
+  for (s in 2:t) {
+    {
+      // rescale previous R and overall sd prior for gamma
+      real r_alpha_ = (R[s - 1] / r_sd)^2;
+      real r_beta_ = (r_sd^2) / R[s - 1];
+      // reproduction number prior dependent on previous time step estimate
+      R[s] ~ gamma(r_alpha_, r_beta_);
+    }
+  }
+  
+  // penalised_prior on generation interval
+  target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
+  target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * t;
+  
 }
   
 generated quantities {

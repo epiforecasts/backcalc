@@ -126,7 +126,8 @@ nowcast <- function(reported_cases, family = "poisson",
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                             day_of_week_eff= rnorm(7, 1, 0.1),
-                            rep_phi = rexp(1, 1))}
+                            rep_phi = rexp(1, 1),
+                            inf_phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
 
