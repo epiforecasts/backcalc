@@ -155,10 +155,11 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "poisson", incubation_period = incubation_period,
+                                family = "negbin", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_interval = generation_interval, cores = 4, chains = 4,
-                                samples = 1000, return_all = TRUE, model = model, verbose = TRUE)
+                                samples = 1000, return_all = TRUE, model = model,
+                                verbose = TRUE)
 ```
 
 ### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
@@ -198,7 +199,7 @@ results <- lapply(countries,
                                          reporting_delay = reporting_delay,
                                          generation_interval = generation_interval, 
                                          samples = 1000, cores = 4, chains = 4,
-                                         return_all = TRUE, model = model)
+                                         return_all = TRUE, model = model, family = "negbin")
         
         return(list(sampling_cases, non_parametric_cases))
                                        })

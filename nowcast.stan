@@ -109,7 +109,7 @@ transformed parameters {
 model {
   // Week effect
   for (j in 1:7) {
-    day_of_week_eff[j] ~ normal(1, 0.4) T[0,];
+    day_of_week_eff[j] ~ normal(1, 0.2) T[0,];
   }
   
   // Reporting overdispersion
@@ -117,17 +117,18 @@ model {
 
   // Noise on median shift
   for (i in 1:t) {
-    noise[i] ~ normal(1, 0.4) T[0,];
+    noise[i] ~ normal(1, 0.2) T[0,];
   }
   
-  // Log likelihood of reports
+  // daily cases given reports
   if (model_type == 1) {
     target +=  poisson_lpmf(cases | reports);
-    target +=  poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
   }else{
     target += neg_binomial_2_lpmf(cases | reports, phi);
-    target += neg_binomial_2_lpmf(weekly_cases[7:t] | weekly_reports[7:t], phi);
   }
+  
+  // weekly cases given weekly reports
+  target +=  poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
 
   // penalised priors
   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
@@ -138,5 +139,10 @@ model {
   
 generated quantities {
   int imputed_infections[t];
-  imputed_infections = poisson_rng(infections);
+  if (model_type == 1) {
+    imputed_infections = poisson_rng(infections);
+  }else{
+    imputed_infections = neg_binomial_rng(infections, phi);
+  }
+
 }

@@ -220,6 +220,8 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
       
       out$rep_sd <- extract_static_parameter("rep_sd")
       
+      out$overdispersion <- extract_static_parameter("phi")
+      
       out$fit <- fit
       
       ## Add prior infections
