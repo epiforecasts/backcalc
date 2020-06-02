@@ -109,7 +109,7 @@ transformed parameters {
 model {
   // Week effect
   for (j in 1:7) {
-    day_of_week_eff[j] ~ normal(1, 0.1) T[0,];
+    day_of_week_eff[j] ~ normal(1, 0.4) T[0,];
   }
   
   // Reporting overdispersion
@@ -117,7 +117,7 @@ model {
 
   // Noise on median shift
   for (i in 1:t) {
-    noise[i] ~ normal(1, 0.2) T[0,];
+    noise[i] ~ normal(1, 0.4) T[0,];
   }
   
   // Log likelihood of reports

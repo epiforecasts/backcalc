@@ -56,7 +56,7 @@ model <- rstan::stan_model("nowcast.stan")
 future::plan("multisession", workers = round(future::availableCores() / 2))
 
 ## Logical to control testing on real data
-run_countries <- FALSE
+run_countries <- TRUE
 ```
 
 ## Methods
