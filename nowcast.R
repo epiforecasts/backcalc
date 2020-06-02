@@ -126,7 +126,7 @@ nowcast <- function(reported_cases, family = "poisson",
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                             day_of_week_eff= rnorm(7, 1, 0.1),
-                            phi = rexp(1, 1))}
+                            rep_phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
 
@@ -220,7 +220,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
       
       out$rep_sd <- extract_static_parameter("rep_sd")
       
-      out$overdispersion <- extract_static_parameter("phi")
+      out$reporting_overdispersion <- extract_static_parameter("rep_phi")
       
       out$fit <- fit
       
