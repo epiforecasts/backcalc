@@ -42,6 +42,19 @@ data {
   int model_type; //Type of model: 1 = Poisson otherwise negative binomial
 }
 
+transformed data{
+  int<lower = 0> weekly_cases[t];
+  int<lower = 0> cum_cases[t];
+  
+  //Calculate weekly cases
+  cum_cases[1] = cases[1];
+  weekly_cases[1] = cases[1];
+  for (s in 2:t) { 
+    cum_cases[s] = cum_cases[s - 1] + cases[s];
+    weekly_cases[s] = cum_cases[s] - cum_cases[max(1, s - 7)];
+  }
+  
+}
 parameters{
   vector<lower = 0>[t] noise;
   real <lower = 0> inc_mean;         // mean of incubation period
@@ -58,7 +71,10 @@ transformed parameters {
   vector<lower = 0>[t] infections;
   vector<lower = 0>[t] onsets;
   vector<lower = 0>[t] reports;
+  vector<lower = 0>[t] cum_reports;
+  vector<lower = 0>[t] weekly_reports;
 
+   
   //Reverse the distributions to allow vectorised access
     for (j in 1:max_rep) {
       rev_delay[j] =
@@ -79,9 +95,14 @@ transformed parameters {
   // Reports from onsets
   reports = convolve(onsets, rev_delay);
      
-  // Add reporting effects
+ //Calculate Cumulative reports
+  cum_reports = cumulative_sum(reports);
+  
   for (s in 1:t) {
-      reports[s] = reports[s] * day_of_week_eff[day_of_week[s]];
+    //Calculate weekly reports
+    weekly_reports[s] = cum_reports[s] - cum_reports[max(1, s - 7)];
+    // Add reporting effects
+    reports[s] *= day_of_week_eff[day_of_week[s]];
     }
 }
 
@@ -90,7 +111,7 @@ model {
   for (j in 1:7) {
     day_of_week_eff[j] ~ normal(1, 0.1) T[0,];
   }
-
+  
   // Reporting overdispersion
   phi ~ exponential(1);
 
@@ -102,8 +123,10 @@ model {
   // Log likelihood of reports
   if (model_type == 1) {
     target +=  poisson_lpmf(cases | reports);
+    target +=  poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
   }else{
     target += neg_binomial_2_lpmf(cases | reports, phi);
+    target += neg_binomial_2_lpmf(weekly_cases[7:t] | weekly_reports[7:t], phi);
   }
 
   // penalised priors

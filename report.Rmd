@@ -54,6 +54,9 @@ model <- rstan::stan_model("nowcast.stan")
 
 ## Run in parallel when possible
 future::plan("multisession", workers = round(future::availableCores() / 2))
+
+## Logical to control testing on real data
+run_countries <- FALSE
 ```
 
 ## Methods
@@ -172,7 +175,7 @@ reported_cases <- reported_cases[date >= "2020-02-01"]
 
 * Run backcalculation on each country in turn
 
-```{r, message = FALSE}
+```{r, message = FALSE, eval = run_countries}
 countries <- c("Austria", "United Kingdom", "United States of America", "Russia")
 
 results <- lapply(countries,
@@ -297,13 +300,13 @@ plot
 
 * Explore reporting effects by country
 
-```{r}
+```{r, eval = run_countries}
 purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 ```
 
 * Prepare data for plotting
 
-```{r}
+```{r, eval = run_countries}
 summarised_cases <- data.table::copy(reported_cases)[, median := confirm][, type := "Reported Cases"]
 
 
@@ -317,7 +320,7 @@ all_country_data <- all_country_data[date >= "2020-03-01"]
 
 * Plot data
 
-```{r, fig.width = 12, fig.height = 9, dpi = 400, message = FALSE, warning = FALSE} 
+```{r, eval = run_countries, fig.width = 12, fig.height = 9, dpi = 400, message = FALSE, warning = FALSE} 
 plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fill = type)) +
   ggplot2::geom_col(data = all_country_data[type %in% "Reported Cases"],
                     ggplot2::aes(y = median), fill = "grey", col = "white") +
