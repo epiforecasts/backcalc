@@ -128,7 +128,8 @@ model {
   }
   
   // weekly cases given weekly reports
-  target +=  poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
+  target += poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
+
 
   // penalised priors
   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
@@ -142,7 +143,7 @@ generated quantities {
   if (model_type == 1) {
     imputed_infections = poisson_rng(infections);
   }else{
-    imputed_infections = neg_binomial_rng(infections, phi);
+    imputed_infections = neg_binomial_2_rng(infections, phi);
   }
 
 }
