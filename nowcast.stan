@@ -32,7 +32,7 @@ functions {
     real alpha = (mu / sigma)^2;
     real beta = (sigma^2) / mu;
     
-    return((lognormal_cdf(y, alpha, beta) - lognormal_cdf(y - 1, alpha, beta)));
+    return((gamma_cdf(y, alpha, beta) - gamma_cdf(y - 1, alpha, beta)));
   }
 }
 
