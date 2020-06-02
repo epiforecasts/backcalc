@@ -243,15 +243,15 @@ simulated_cases <- simulated_cases[reference %in% c("infection", "report")][, me
 
 summarise_nowcasting_approaches <- function(sampling_cases, non_parametric_cases) {
   sampling_cases <- sampling_cases[type %in% "infection_upscaled"][,
-               .(median = median(cases), bottom = quantile(cases, 0.025),
-                 lower = quantile(cases, 0.25), upper = quantile(cases, 0.75),
-                 top = quantile(cases, 0.975)), by = c("date", "type")][,
+               .(median = median(cases), bottom = quantile(cases, 0.025, na.rm = TRUE),
+                 lower = quantile(cases, 0.25, na.rm = TRUE), upper = quantile(cases, 0.75, na.rm = TRUE),
+                 top = quantile(cases, 0.975, na.rm = TRUE)), by = c("date", "type")][,
                  type := "Sampled"]
 
 non_parametric_infections <- non_parametric_cases$infections[,
-               .(median = median(value), bottom = quantile(value, 0.025),
-                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
-                 top = quantile(value, 0.975)), by = c("date")][,
+               .(median = median(value), bottom = quantile(value, 0.025, na.rm = TRUE),
+                 lower = quantile(value, 0.25, na.rm = TRUE), upper = quantile(value, 0.75, na.rm = TRUE),
+                 top = quantile(value, 0.975, na.rm = TRUE)), by = c("date")][,
                  type := "Non-parametric"]
 
 out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections), fill = TRUE)

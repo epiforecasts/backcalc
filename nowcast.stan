@@ -49,7 +49,9 @@ parameters{
   real <lower = 0> rep_mean;         // mean of reporting delay
   real <lower = 0> rep_sd;           // sd of incubation period
   real<lower = 0> phi; 
-  vector[7] day_of_week_eff;
+  vector<lower = 0>[7] day_of_week_raw;
+  vector<lower = 0>[7] mu;
+  cholesky_factor_corr[7] L_Sigma;
 }
 
 transformed parameters {
@@ -58,6 +60,7 @@ transformed parameters {
   vector<lower = 0>[t] infections;
   vector<lower = 0>[t] onsets;
   vector<lower = 0>[t] reports;
+  simplex[7] day_of_week_eff = softmax(day_of_week_raw);
 
   //Reverse the distributions to allow vectorised access
     for (j in 1:max_rep) {
@@ -78,25 +81,29 @@ transformed parameters {
      
   // Reports from onsets
   reports = convolve(onsets, rev_delay);
+  
+  // reports .*= noise;
      
   // Add reporting effects
   for (s in 1:t) {
-      reports[s] = reports[s] * day_of_week_eff[day_of_week[s]];
+      reports[s] *= day_of_week_eff[day_of_week[s]] * 7;
     }
 }
 
 model {
-  // Week effect
-  for (j in 1:7) {
-    day_of_week_eff[j] ~ normal(1, 0.1) T[0,];
-  }
+  
+  day_of_week_raw ~ multi_normal_cholesky(mu, L_Sigma);
+  mu ~ cauchy(0.0, 2.5);
+  L_Sigma ~ lkj_corr_cholesky(1.0); // this is uniform over all correlation matrices
+  // eta ~ normal(1, 1) T[0, ];
+  
 
   // Reporting overdispersion
   phi ~ exponential(1);
 
   // Noise on median shift
   for (i in 1:t) {
-    noise[i] ~ normal(1, 0.2) T[0,];
+    noise[i] ~ normal(1, 0.1) T[0,];
   }
   
   // Log likelihood of reports
