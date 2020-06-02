@@ -13,6 +13,9 @@ functions {
     }
   
    convolved_cases = delay_mat * to_vector(cases);
+   
+   //Initialise first entry as slightly above 0
+   convolved_cases[1] = 0.00001;
 
    return convolved_cases;
   }
@@ -122,7 +125,7 @@ transformed parameters {
       rev_generation_time[j] =
         discretised_gamma_pmf(max_gt - j + 1, gt_mean, gt_sd);
     }
-    
+  
   // generate infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
 
@@ -176,13 +179,11 @@ model {
   // weekly cases given weekly reports (penalises day of week effect)
   target += poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
 
-
   // penalised priors for incubation period, and report delay
-  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * (2 * t);
-  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * (2 * t);
-  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * (2* t);
-  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * (2 * t);
-  
+  target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
+  target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * t;
+  target += normal_lpdf(rep_mean | rep_mean_mean, rep_mean_sd) * t;
+  target += normal_lpdf(rep_sd | rep_sd_mean, rep_sd_sd) * t;
   
   // initial prior on R
   R[1] ~ gamma(r_alpha, r_beta);
