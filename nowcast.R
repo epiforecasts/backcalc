@@ -42,7 +42,7 @@
 #'                rt_prior = rt_prior,
 #'                model = model,
 #'                cores = 4, chains = 4,
-#'                estimate_rt = TRUE,
+#'                estimate_rt = FALSE,
 #'                verbose = TRUE, return_all = TRUE
 #'                )
 #'
@@ -54,7 +54,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     chains = 2,
                     samples = 1000,
                     warmup = 1000,
-                    estimate_rt = TRUE,
+                    estimate_rt = FALSE,
                     return_all = FALSE,
                     verbose = FALSE){
   
