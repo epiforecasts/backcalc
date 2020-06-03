@@ -42,6 +42,7 @@
 #'                rt_prior = rt_prior,
 #'                model = model,
 #'                cores = 4, chains = 4,
+#'                estimate_rt = FALSE,
 #'                verbose = TRUE, return_all = TRUE
 #'                )
 #'
@@ -53,6 +54,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     chains = 2,
                     samples = 1000,
                     warmup = 1000,
+                    estimate_rt = TRUE,
                     return_all = FALSE,
                     verbose = FALSE){
   
@@ -130,7 +132,8 @@ nowcast <- function(reported_cases, family = "poisson",
     gt_sd_sd = generation_time$sd_sd,
     max_gt = generation_time$max,
     r_mean = rt_prior$mean,
-    r_sd = rt_prior$sd
+    r_sd = rt_prior$sd,
+    estimate_r = ifelse(estimate_rt, 1, 0)
   )  
   
   ## Set model to poisson or negative binomial
@@ -163,8 +166,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
   }
   
 
-  fit <- suppressWarnings(
-           rstan::sampling(model,
+  fit <- rstan::sampling(model,
                            data = data,
                            chains = chains,
                            init = init_fun,
@@ -172,7 +174,6 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                            warmup = warmup,
                            cores = cores,
                            refresh = ifelse(verbose, 50, 0))
-           )
     
     
     

@@ -99,9 +99,9 @@ rts
 
 ```{r}
 ## Use the mean default generation interval for covid
-generation_interval <- rowMeans(EpiNow::covid_generation_times)
+generation_time_pdf <- rowMeans(EpiNow::covid_generation_times)
 
-generation_interval
+generation_time_pdf
 ```
 
 ```{r}
@@ -116,6 +116,12 @@ reporting_delay <- list(mean = log(5),
                          sd = log(2),
                          sd_sd = log(1.2),
                          max = 30)
+
+generation_time <- list(mean = EpiNow::covid_generation_times_summary[1, ]$mean,
+                        mean_sd = EpiNow::covid_generation_times_summary[1, ]$mean_sd,
+                        sd = EpiNow::covid_generation_times_summary[1, ]$sd,
+                        sd_sd = EpiNow::covid_generation_times_summary[1, ]$sd_sd,
+                        max = 30)
 
 ## Sample a report delay as a lognormal - take 10 samples
 delay_defs <- EpiNow::lognorm_dist_def(mean = reporting_delay$mean, mean_sd = reporting_delay$mean_sd,
@@ -133,10 +139,10 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
 simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10 , initial_date = as.Date("2020-03-01"),
-                                          generation_interval = generation_interval, delay_def = delay_defs[1, ],
+                                          generation_interval = generation_time_pdf,
+                                          delay_def = delay_defs[1, ],
                                           incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.2, 1, 1, 1, 1.4,
-                                                               0.6, 0.8))
+                                          reporting_effect = c(1.2, 1, 1, 1, 1.4, 0.6, 0.8))
 simulated_cases
 ```
     
@@ -147,23 +153,25 @@ simulated_cases
 ## Extract simulated infections
 simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][, cases := NULL]
 
-# Median covid generation interval - used to smooth prior cases by date of infection
-generation_interval <- rowMeans(EpiNow::covid_generation_times)
-generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
+## Rt prior
+rt_prior <- list(mean = 2.6, sd = 2)
 
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
                                    target_date = max(simulated_reports$date),
-                                   delay_defs = delay_defs,
+                                   delay_defs = delay_defs, 
                                    incubation_defs = incubation_defs,
                                    nowcast_lag = 0, approx_delay = TRUE)
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "negbin", incubation_period = incubation_period,
+                                family = "poisson", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
-                                generation_interval = generation_interval, cores = 4, chains = 4,
-                                samples = 1000, return_all = TRUE, model = model,
+                                generation_time = generation_time, 
+                                rt_prior = rt_prior,
+                                cores = 4, chains = 4,
+                                samples = 1000, warmup = 1000,
+                                return_all = TRUE, model = model,
                                 verbose = TRUE)
 ```
 
