@@ -42,7 +42,7 @@
 #'                rt_prior = rt_prior,
 #'                model = model,
 #'                cores = 4, chains = 4,
-#'                estimate_rt = FALSE,
+#'                estimate_rt = TRUE,
 #'                verbose = TRUE, return_all = TRUE
 #'                )
 #'
@@ -146,12 +146,43 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Set up initial conditions fn --------------------------------------------
 
-init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
+generate_noise <- function() {
+  init_noise <- truncnorm::rtruncnorm(1, a = 0, mean = 1, sd = 0.1)
+  
+  for (i in 2:data$t) {
+    init_noise <- c(init_noise,  truncnorm::rtruncnorm(1, a = 0, mean = init_noise[i - 1], 
+                                                       sd = 0.1))
+  }
+  
+  return(init_noise)
+}
+  
+  
+generate_R <- function() {
+    init_R <-  rgamma(n = 1, 
+                      shape = (rt_prior$mean / rt_prior$sd)^2, 
+                      scale = (rt_prior$sd^2) / rt_prior$mean)
+    
+    for (i in 2:data$t) {
+
+      init_R <- c(init_R, truncnorm::rtruncnorm(1, a = 0, mean = init_R[i -1],  sd = 0.1))
+    }
+    
+    return(init_R)
+  }
+
+init_fun <- function(){list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 1, sd = 0.1),
                             day_of_week_eff= rnorm(7, 1, 0.1),
+                            inc_mean = rnorm(1, incubation_period$mean,  incubation_period$mean_sd),
+                            inc_sd = rnorm(1, incubation_period$sd,  incubation_period$sd_sd),
+                            rep_mean = rnorm(1, reporting_delay$mean,  reporting_delay$mean_sd),
+                            rep_sd = rnorm(1, reporting_delay$sd,  reporting_delay$sd_sd),
                             rep_phi = rexp(1, 1),
                             R = rgamma(n = data$t, 
-                                       shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                       scale = (rt_prior$sd^2) / rt_prior$mean),
+                                      shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                      scale = (rt_prior$sd^2) / rt_prior$mean),
+                            gt_mean = rnorm(1, generation_time$mean,  generation_time$mean_sd),
+                            gt_sd = rnorm(1, generation_time$sd,  generation_time$sd_sd),
                             inf_phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------
@@ -159,13 +190,11 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
   if (missing(model)) {
     model <- rstan::stan_model("nowcast.stan")
   }
-
   
   if (verbose) {
     message(paste0("Running for ",samples + warmup," samples and ", data$t," time steps"))
   }
   
-
   fit <- rstan::sampling(model,
                            data = data,
                            chains = chains,
