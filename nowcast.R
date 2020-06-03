@@ -45,6 +45,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     chains = 2,
                     samples = 1000,
                     warmup = 1000,
+                    adapt_delta = 0.95,
                     return_all = FALSE,
                     verbose = FALSE){
   
@@ -140,16 +141,17 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
   }
   
 
-  fit <- suppressWarnings(
-           rstan::sampling(model,
-                           data = data,
-                           chains = chains,
-                           init = init_fun,
-                           iter = samples + warmup, 
-                           warmup = warmup,
-                           cores = cores,
-                           refresh = ifelse(verbose, 50, 0))
-           )
+  fit <-
+    rstan::sampling(model,
+                    data = data,
+                    chains = chains,
+                    init = init_fun,
+                    iter = samples + warmup, 
+                    warmup = warmup,
+                    cores = cores,
+                    control = list(adapt_delta = adapt_delta),
+                    refresh = ifelse(verbose, 50, 0))
+        
     
     
     

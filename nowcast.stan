@@ -3,8 +3,8 @@ functions {
   vector convolve(vector cases, vector pdf) {
     int t = num_elements(cases);
     matrix[t, t] delay_mat = rep_matrix(0, t, t);
-    int max_pdf = num_elements(pdf);
-    row_vector[max_pdf] row_pdf = to_row_vector(pdf);
+    int max_pdf = num_elements(pdf) + 1;
+    row_vector[max_pdf] row_pdf = to_row_vector(append_row(pdf, 0.0));
     vector[t] convolved_cases;
     
     for (s in 1:t) {
@@ -14,6 +14,8 @@ functions {
   
    convolved_cases = delay_mat * to_vector(cases);
 
+   convolved_cases[1] = 0.000001;
+   
    return convolved_cases;
   }
 
@@ -100,7 +102,7 @@ transformed parameters {
   
   for (s in 1:t) {
     //Calculate weekly reports
-    weekly_reports[s] = cum_reports[s] - cum_reports[max(1, s - 7)];
+    weekly_reports[s] = s == 1 ? cum_reports[1] : cum_reports[s] - cum_reports[max(1, s - 7)];
     // Add reporting effects
     reports[s] *= day_of_week_eff[day_of_week[s]];
     }
@@ -140,10 +142,7 @@ model {
   
 generated quantities {
   int imputed_infections[t];
-  if (model_type == 1) {
-    imputed_infections = poisson_rng(infections);
-  }else{
-    imputed_infections = neg_binomial_2_rng(infections, phi);
-  }
+ 
+  imputed_infections = poisson_rng(infections);
 
 }
