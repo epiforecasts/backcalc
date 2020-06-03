@@ -61,11 +61,11 @@ nowcast <- function(reported_cases, family = "poisson",
   # Make sure there are no missing dates and order cases --------------------
   reported_cases_grid <- data.table::copy(reported_cases)[, .(date = seq(min(date), max(date), by = "days"))]
 
-  nowcast <-  data.table::merge.data.table(
+  nowcast <- data.table::merge.data.table(
     reported_cases , reported_cases_grid, 
     by = c("date"), all.y = TRUE)
   
-  reported_cases <-  reported_cases[is.na(confirm), confirm := 0 ][,.(date = date, confirm)]
+  reported_cases <- reported_cases[is.na(confirm), confirm := 0 ][,.(date = date, confirm)]
   reported_cases <- data.table::setorder(reported_cases, date)
   
   ## Filter out 0 reported cases
