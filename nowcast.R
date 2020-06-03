@@ -4,6 +4,7 @@
 #' @importFrom purrr tranpose
 #' @importFrom future.apply future_lapply
 #' @importFrom lubridate wday
+#' @importFrom truncnorm rtruncnorm
 #' @examples
 #' reported_cases <- NCoVUtils::get_ecdc_cases(countries = "Russia")
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
@@ -59,6 +60,9 @@ nowcast <- function(reported_cases, family = "poisson",
                     verbose = FALSE){
   
   suppressMessages(data.table::setDTthreads(threads = 1))
+
+  # Add dummy prior for R If not estimating ---------------------------------
+
   
   # Make sure there are no missing dates and order cases --------------------
   reported_cases_grid <- data.table::copy(reported_cases)[, .(date = seq(min(date), max(date), by = "days"))]
@@ -146,44 +150,24 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Set up initial conditions fn --------------------------------------------
 
-generate_noise <- function() {
-  init_noise <- truncnorm::rtruncnorm(1, a = 0, mean = 1, sd = 0.1)
-  
-  for (i in 2:data$t) {
-    init_noise <- c(init_noise,  truncnorm::rtruncnorm(1, a = 0, mean = init_noise[i - 1], 
-                                                       sd = 0.1))
-  }
-  
-  return(init_noise)
-}
-  
-  
-generate_R <- function() {
-    init_R <-  rgamma(n = 1, 
-                      shape = (rt_prior$mean / rt_prior$sd)^2, 
-                      scale = (rt_prior$sd^2) / rt_prior$mean)
-    
-    for (i in 2:data$t) {
-
-      init_R <- c(init_R, truncnorm::rtruncnorm(1, a = 0, mean = init_R[i -1],  sd = 0.1))
-    }
-    
-    return(init_R)
-  }
-
-init_fun <- function(){list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 1, sd = 0.1),
+init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 1, sd = 0.4),
                             day_of_week_eff= rnorm(7, 1, 0.1),
-                            inc_mean = rnorm(1, incubation_period$mean,  incubation_period$mean_sd),
-                            inc_sd = rnorm(1, incubation_period$sd,  incubation_period$sd_sd),
-                            rep_mean = rnorm(1, reporting_delay$mean,  reporting_delay$mean_sd),
-                            rep_sd = rnorm(1, reporting_delay$sd,  reporting_delay$sd_sd),
+                            inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
+                            inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
+                            rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
+                            rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd),
                             rep_phi = rexp(1, 1),
-                            R = rgamma(n = data$t, 
-                                      shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                      scale = (rt_prior$sd^2) / rt_prior$mean),
-                            gt_mean = rnorm(1, generation_time$mean,  generation_time$mean_sd),
-                            gt_sd = rnorm(1, generation_time$sd,  generation_time$sd_sd),
-                            inf_phi = rexp(1, 1))}
+                            gt_mean = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  sd = generation_time$mean_sd),
+                            gt_sd = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd, sd = generation_time$sd_sd),
+                            inf_phi = rexp(1, 1))
+
+                        if (estimate_rt) {
+                        out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                                    scale = (rt_prior$sd^2) / rt_prior$mean)
+                        }
+
+                return(out)
+}
   
 # Load and run the stan model ---------------------------------------------
 
@@ -241,9 +225,12 @@ init_fun <- function(){list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 
                                         samples,
                                         reported_cases$date)
     
-    out$R <- extract_parameter("R", 
-                                samples,
-                                reported_cases$date)
+    if (estimate_rt) {
+      out$R <- extract_parameter("R", 
+                                 samples,
+                                 reported_cases$date)
+    }
+
     
     if (return_all) {
       out$noise <- extract_parameter("noise", 
@@ -277,12 +264,14 @@ init_fun <- function(){list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 
       
       out$rep_sd <- extract_static_parameter("rep_sd")
       
-      out$gt_mean <- extract_static_parameter("gt_mean")
-      
-      out$gt_sd <- extract_static_parameter("gt_sd")
-      
-      out$infection_overdispersion <- extract_static_parameter("inf_phi")
-      
+      if (estimate_rt) {
+        out$gt_mean <- extract_static_parameter("gt_mean")
+        
+        out$gt_sd <- extract_static_parameter("gt_sd")
+        
+        out$infection_overdispersion <- extract_static_parameter("inf_phi")
+      }
+
       out$fit <- fit
       
       ## Add prior infections
