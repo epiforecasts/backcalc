@@ -156,7 +156,7 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 non_parametric_cases <- nowcast(simulated_reports,
                                 family = "negbin", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
-                                generation_interval = generation_interval, cores = 4, chains = 4,
+                                generation_interval = 7, cores = 4, chains = 4,
                                 samples = 2000, warmup = 1000,
                                 return_all = TRUE, model = model,
                                 verbose = TRUE)
@@ -197,7 +197,7 @@ results <- lapply(countries,
                                         family = "negbin",
                                          incubation_period = incubation_period,
                                          reporting_delay = reporting_delay,
-                                         generation_interval = generation_interval, 
+                                         generation_interval = 7, 
                                          samples = 2000, warmup = 1000,
                                          cores = 4, chains = 4,
                                          return_all = TRUE, model = model)

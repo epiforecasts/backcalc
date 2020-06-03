@@ -45,7 +45,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     chains = 2,
                     samples = 1000,
                     warmup = 1000,
-                    adapt_delta = 0.95,
+                    adapt_delta = 0.99,
                     return_all = FALSE,
                     verbose = FALSE){
   
@@ -126,7 +126,6 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
-                            day_of_week_eff= rnorm(7, 1, 0.1),
                             phi = rexp(1, 1))}
   
 # Load and run the stan model ---------------------------------------------

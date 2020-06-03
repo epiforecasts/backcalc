@@ -64,7 +64,7 @@ parameters{
   real <lower = 0> rep_mean;         // mean of reporting delay
   real <lower = 0> rep_sd;           // sd of incubation period
   real<lower = 0> phi; 
-  vector[7] day_of_week_eff;
+  simplex[7] day_of_week_eff_raw;
 }
 
 transformed parameters {
@@ -75,8 +75,10 @@ transformed parameters {
   vector<lower = 0>[t] reports;
   vector<lower = 0>[t] cum_reports;
   vector<lower = 0>[t] weekly_reports;
+  vector[7] day_of_week_eff;
+  
+  day_of_week_eff = day_of_week_eff_raw * 7;
 
-   
   //Reverse the distributions to allow vectorised access
     for (j in 1:max_rep) {
       rev_delay[j] =
@@ -109,17 +111,13 @@ transformed parameters {
 }
 
 model {
-  // Week effect
-  for (j in 1:7) {
-    day_of_week_eff[j] ~ normal(1, 0.2) T[0,];
-  }
-  
+
   // Reporting overdispersion
   phi ~ exponential(1);
 
   // Noise on median shift
   for (i in 1:t) {
-    noise[i] ~ normal(1, 0.2) T[0,];
+    noise[i] ~ normal(1, 0.4) T[0,];
   }
   
   // daily cases given reports
@@ -131,8 +129,7 @@ model {
   
   // weekly cases given weekly reports
   target += poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
-
-
+  
   // penalised priors
   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
   target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * t;
