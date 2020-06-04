@@ -62,8 +62,11 @@ nowcast <- function(reported_cases, family = "poisson",
   
   suppressMessages(data.table::setDTthreads(threads = 1))
 
-  # Add dummy prior for R If not estimating ---------------------------------
+  # Add prior for R if missing ---------------------------------
 
+  if (missing(rt_prior)) {
+    rt_prior <- list(mean = 1, sd = 2)
+  }
   
   # Make sure there are no missing dates and order cases --------------------
   reported_cases_grid <- data.table::copy(reported_cases)[, .(date = seq(min(date), max(date), by = "days"))]
@@ -119,7 +122,7 @@ nowcast <- function(reported_cases, family = "poisson",
   data <- list(
     day_of_week = reported_cases$day_of_week,
     cases = reported_cases$confirm,
-    shifted_cases = shifted_reported_cases$confirm,
+  #  shifted_cases = shifted_reported_cases$confirm,
     t = length(reported_cases$date),
     inc_mean_mean = incubation_period$mean,
     inc_mean_sd = incubation_period$mean_sd,
@@ -282,4 +285,3 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
   
   return(out)
 }
-

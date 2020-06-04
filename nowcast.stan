@@ -1,37 +1,65 @@
 functions {
-  // Convolve a pdf and case vector using matrix multiplication
-  vector convolve(vector cases, vector pdf) {
+  // convolve a pdf and case vector using matrix multiplication
+  vector convolve(vector cases, vector pdf, int direction) {
     int t = num_elements(cases);
     matrix[t, t] delay_mat = rep_matrix(0, t, t);
     int max_pdf = num_elements(pdf) + 1;
-    row_vector[max_pdf] row_pdf = to_row_vector(append_row(pdf, 0.0));
+    row_vector[max_pdf] row_pdf = direction ? to_row_vector(append_row(pdf, 0.0)) :
+                                              to_row_vector(append_row(0.0, pdf)) ;
     vector[t] convolved_cases;
     
     for (s in 1:t) {
-      int max_length = min(s, max_pdf);
-      delay_mat[s, (s - max_length + 1):s] = row_pdf[(max_pdf - max_length + 1):max_pdf];
+      if (direction) {
+        int max_length = min(s, max_pdf);
+        delay_mat[s, (s - max_length + 1):s] = row_pdf[(max_pdf - max_length + 1):max_pdf];
+      }else{
+        int max_length = min(t - s, max_pdf - 1);
+        delay_mat[s, s:(s + max_length)] = row_pdf[1:(max_length + 1)];
+      }
     }
   
    convolved_cases = delay_mat * to_vector(cases);
    
-   //Initialise all entries as non-zero
-   convolved_cases[1] = 0.00001;
-
-   return convolved_cases;
+   if (direction) {
+    // initialise all entries as non-zero
+    convolved_cases[1] = 0.00001;
+   }else{
+    // assume one case present on last day for scaling
+    convolved_cases[t] =  1; 
+   }
+   return(convolved_cases);
   }
 
+  // apply backsampling and upscaling based on a pdf
+  vector backsample(vector cases, vector pdf) {
+    int t = num_elements(cases);
+    vector[t] shifted_cases;
+    int max_upscale = min(t, num_elements(pdf));
+    int pdf_length = num_elements(pdf);
+    vector[pdf_length] cdf;
+    
+    shifted_cases = convolve(cases, pdf, 0);
+    
+    //assume last day is like previous
+    shifted_cases[t] = shifted_cases[t - 1];
+    
+    // apply upscaling
+    cdf = cumulative_sum(pdf);
+    for (i in  1:max_upscale) {
+      shifted_cases[(t - i + 1)] = shifted_cases[(t - i + 1)] / cdf[i];
+    }
+    return(shifted_cases);
+  }
+  
   real discretised_lognormal_pmf(int y, real mu, real sigma) {
-
     return((lognormal_cdf(y, mu, sigma) - lognormal_cdf(y - 1, mu, sigma)));
   }
   
   
   real discretised_gamma_pmf(int y, real mu, real sigma) {
-    
     // calculate alpha and beta for gamma distribution
     real alpha = (mu / sigma)^2;
     real beta = (sigma^2) / mu;
-    
     return((gamma_cdf(y, alpha, beta) - gamma_cdf(y - 1, alpha, beta)));
   }
 }
@@ -41,7 +69,6 @@ data {
   int t;                             // number of time steps
   int day_of_week[t];                // day of the week indicator (1 - 7)
   int <lower = 0> cases[t];          // observed cases
-  vector<lower = 0>[t] shifted_cases;// mean delay + incubation shifted cases (smoothed)
   real inc_mean_sd;                  // prior sd of mean incubation period
   real inc_mean_mean;                // prior mean of mean incubation period
   real inc_sd_mean;                  // prior sd of sd of incubation period
@@ -64,6 +91,9 @@ data {
 }
 
 transformed data{
+  vector<lower = 0>[t] shifted_cases;// backsampled cases
+  vector[max_rep] delay;             // report delay pdf
+  vector[max_inc] incubation;        // incubation period pdf
   int<lower = 0> weekly_cases[t];    // weekly observed cases
   int<lower = 0> cum_cases[t];       // cumulative cases
   real r_alpha;                      // alpha parameter of the R gamma prior
@@ -81,15 +111,42 @@ transformed data{
     weekly_cases[s] = cum_cases[s] - cum_cases[max(1, s - 7)];
   }
   
+  // distributions
+
+   
+  for (j in 1:max_inc) {
+    incubation[j] =
+        discretised_lognormal_pmf(j, inc_mean_mean, inc_sd_mean);
+  }
+  
+  // initialise cases using a backwards convolution from report
+  // upscale to adjust for right truncation
+  {
+    for (j in 1:max_rep) {
+      delay[j] =
+        discretised_lognormal_pmf(j, rep_mean_mean, rep_sd_mean);
+    }
+    shifted_cases = backsample(to_vector(cases) + 0.00001, delay);
+  }
+  // then from onset (also with upscaling)
+  {
+    for (j in 1:max_inc) {
+      incubation[j] =
+           discretised_lognormal_pmf(j, inc_mean_mean, inc_sd_mean);
+     }
+    shifted_cases = backsample(shifted_cases, delay);
+  }
 }
 parameters{
   vector<lower = 0>[t] noise;                      // noise on the mean shifted observed cases
+  vector[7] day_of_week_eff_raw;                   // day of week reporting effect + control parameters
+  vector[7] mu;
+  cholesky_factor_corr[7] L_Sigma;
   real <lower = 0> inc_mean;                       // mean of incubation period
   real <lower = 0> inc_sd;                         // sd of incubation period
   real <lower = 0> rep_mean;                       // mean of reporting delay
   real <lower = 0> rep_sd;                         // sd of incubation period
   real<lower = 0> rep_phi;                         // overdispersion of the reporting process
-  simplex[7] day_of_week_eff_raw;                // day of week reporting effect
   vector<lower = 0>[estimate_r > 0 ? t : 0] R;     // effective reproduction number over time
   real<lower = 0> gt_mean;                         // mean of generation time
   real <lower = 0> gt_sd;                          // sd of generation time
@@ -104,33 +161,35 @@ transformed parameters {
   vector<lower = 0>[t] reports;                           // reports over time
   vector<lower = 0>[t] cum_reports;                       // cumulative reported cases (unadjusted for reporting)
   vector<lower = 0>[t] weekly_reports;                    // weekly reported cases
-  vector[7] day_of_week_eff;                              // Day of the week effect
+  simplex[7] day_of_week_eff_unscaled;                    // unscaled day of week effect
+  vector[7] day_of_week_eff;                              // day of the week effect
   vector[estimate_r > 0 ? max_gt : 0] rev_generation_time;// reversed generation time pdf
   vector[estimate_r > 0 ? t : 0] infectiousness;          // infections over time
   vector[estimate_r > 0 ? t : 0] branch_infections;       // infections generated by the branching process
 
   // reverse the distributions to allow vectorised access
-  for (j in 1:max_rep) {
-    rev_delay[j] =
-        discretised_lognormal_pmf(max_rep - j + 1, inc_mean, inc_sd);
-  }
-   
   for (j in 1:max_inc) {
     rev_incubation[j] =
-        discretised_lognormal_pmf(max_inc - j + 1, rep_mean, rep_sd);
+        discretised_lognormal_pmf(max_inc - j + 1, inc_mean, inc_sd);
+  }
+  
+  for (j in 1:max_rep) {
+    rev_delay[j] =
+        discretised_lognormal_pmf(max_rep - j + 1, rep_mean, rep_sd);
   }
     
   // define day of the week effect
-  day_of_week_eff = day_of_week_eff_raw;
-  
+  day_of_week_eff_unscaled = softmax(day_of_week_eff_raw);
+  day_of_week_eff = 7 * day_of_week_eff_unscaled;
+
   // generate infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
   
   // onsets from infections
-  onsets = convolve(infections, rev_incubation);
+  onsets = convolve(infections, rev_incubation, 1);
 
   // reports from onsets
-  reports = convolve(onsets, rev_delay);
+  reports = convolve(onsets, rev_delay, 1);
 
  // calculate Cumulative reports
   cum_reports = cumulative_sum(reports);
@@ -138,12 +197,12 @@ transformed parameters {
   for (s in 1:t) {
     // calculate weekly reports
     weekly_reports[s] = s == 1 ? cum_reports[1] : cum_reports[s] - cum_reports[max(1, s - 7)];
-    // add reporting effects
+    // add reporting effects (adjust for simplex scale)
     reports[s] *= day_of_week_eff[day_of_week[s]];
   }
     
   ////////////////////////////////////////////////////// 
-  // estimtate reproduction no from a branching process
+  // estimate reproduction no from a branching process
   //////////////////////////////////////////////////////
   if (estimate_r) {
     // calculate pdf of generation time from distribution
@@ -151,9 +210,8 @@ transformed parameters {
        rev_generation_time[j] =
            discretised_gamma_pmf(max_gt - j + 1, gt_mean, gt_sd);
      }
-     
      // infectiousness from infections
-     infectiousness = convolve(infections, rev_generation_time);
+     infectiousness = convolve(infections, rev_generation_time, 1);
   
      // Estimate infections using branching process
      branch_infections = R .* infectiousness;
@@ -161,11 +219,15 @@ transformed parameters {
 }
 
 model {
-
-  // Reporting overdispersion
+  //prior day of the week effect
+  day_of_week_eff_raw ~ multi_normal_cholesky(mu, L_Sigma);
+  mu ~ normal(0, 1);
+  L_Sigma ~ lkj_corr_cholesky(1.0); // this is uniform over all correlation matrices
+  
+  // reporting overdispersion
   rep_phi ~ exponential(1);
 
-  // Noise on median shift
+  // noise on median shift
   for (i in 1:t) {
     noise[i] ~ normal(1, 0.4) T[0,];
   }
@@ -197,7 +259,7 @@ model {
     // infection overdispersion
     inf_phi ~ exponential(1);
   
-   for (s in 1:t) {
+   for (s in 2:t) {
      {
        // rescale previous R and overall sd prior for gamma
        real r_mean_ = R[s - 1];
@@ -210,20 +272,17 @@ model {
        }
      }
      
-     // penalised_prior on generation interval
+    // penalised_prior on generation interval
     target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
     target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * t;
   
     // Likelihood of Rt given infections
     target += normal_lpdf(infections | branch_infections, 0.1);
-    
   }
 }
   
 generated quantities {
   int imputed_infections[t];
-  
   // Simulated infections - assume poisson (with negative binomial reporting)
   imputed_infections = poisson_rng(infections);
-
 }
