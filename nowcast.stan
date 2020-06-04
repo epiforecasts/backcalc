@@ -17,7 +17,6 @@ functions {
    //Initialise all entries as non-zero
    convolved_cases[1] = 0.00001;
 
-   
    return convolved_cases;
   }
 
@@ -121,6 +120,9 @@ transformed parameters {
         discretised_lognormal_pmf(max_inc - j + 1, rep_mean, rep_sd);
   }
     
+  // define day of the week effect
+  day_of_week_eff = day_of_week_eff_raw;
+  
   // generate infections from median shifted cases and non-parameteric noise
   infections = shifted_cases .* noise;
   
@@ -197,7 +199,6 @@ model {
   
    for (s in 1:t) {
      {
-       
        // rescale previous R and overall sd prior for gamma
        real r_mean_ = R[s - 1];
        // assumption here is that todays R is like yesterdays
