@@ -63,8 +63,8 @@ model
 #>   vector convolve(vector cases, vector pdf) {
 #>     int t = num_elements(cases);
 #>     matrix[t, t] delay_mat = rep_matrix(0, t, t);
-#>     int max_pdf = num_elements(pdf);
-#>     row_vector[max_pdf] row_pdf = to_row_vector(pdf);
+#>     int max_pdf = num_elements(pdf) + 1;
+#>     row_vector[max_pdf] row_pdf = to_row_vector(append_row(pdf, 0.0));
 #>     vector[t] convolved_cases;
 #>     
 #>     for (s in 1:t) {
@@ -74,6 +74,8 @@ model
 #>   
 #>    convolved_cases = delay_mat * to_vector(cases);
 #> 
+#>    convolved_cases[1] = 0.000001;
+#>    
 #>    return convolved_cases;
 #>   }
 #> 
@@ -122,7 +124,7 @@ model
 #>   real <lower = 0> rep_mean;         // mean of reporting delay
 #>   real <lower = 0> rep_sd;           // sd of incubation period
 #>   real<lower = 0> phi; 
-#>   vector[7] day_of_week_eff;
+#>   simplex[7] day_of_week_eff_raw;
 #> }
 #> 
 #> transformed parameters {
@@ -133,8 +135,10 @@ model
 #>   vector<lower = 0>[t] reports;
 #>   vector<lower = 0>[t] cum_reports;
 #>   vector<lower = 0>[t] weekly_reports;
+#>   vector[7] day_of_week_eff;
+#>   
+#>   day_of_week_eff = day_of_week_eff_raw * 7;
 #> 
-#>    
 #>   //Reverse the distributions to allow vectorised access
 #>     for (j in 1:max_rep) {
 #>       rev_delay[j] =
@@ -160,24 +164,20 @@ model
 #>   
 #>   for (s in 1:t) {
 #>     //Calculate weekly reports
-#>     weekly_reports[s] = cum_reports[s] - cum_reports[max(1, s - 7)];
+#>     weekly_reports[s] = s == 1 ? cum_reports[1] : cum_reports[s] - cum_reports[max(1, s - 7)];
 #>     // Add reporting effects
 #>     reports[s] *= day_of_week_eff[day_of_week[s]];
 #>     }
 #> }
 #> 
 #> model {
-#>   // Week effect
-#>   for (j in 1:7) {
-#>     day_of_week_eff[j] ~ normal(1, 0.2) T[0,];
-#>   }
-#>   
+#> 
 #>   // Reporting overdispersion
 #>   phi ~ exponential(1);
 #> 
 #>   // Noise on median shift
 #>   for (i in 1:t) {
-#>     noise[i] ~ normal(1, 0.2) T[0,];
+#>     noise[i] ~ normal(1, 0.4) T[0,];
 #>   }
 #>   
 #>   // daily cases given reports
@@ -189,8 +189,7 @@ model
 #>   
 #>   // weekly cases given weekly reports
 #>   target += poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
-#> 
-#> 
+#>   
 #>   // penalised priors
 #>   target += normal_lpdf(inc_mean | inc_mean_mean, inc_mean_sd) * t;
 #>   target += normal_lpdf(inc_sd | inc_sd_mean, inc_sd_sd) * t;
@@ -200,11 +199,8 @@ model
 #>   
 #> generated quantities {
 #>   int imputed_infections[t];
-#>   if (model_type == 1) {
-#>     imputed_infections = poisson_rng(infections);
-#>   }else{
-#>     imputed_infections = neg_binomial_2_rng(infections, phi);
-#>   }
+#>  
+#>   imputed_infections = poisson_rng(infections);
 #> 
 #> }
 ```
@@ -283,17 +279,17 @@ simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_dat
                                           reporting_effect = c(1.4, rep(1, 4), 0.8, 0.8))
 simulated_cases
 #>            date cases reference
-#>   1: 2020-03-02    50 infection
+#>   1: 2020-03-02    35 infection
 #>   2: 2020-03-03    54 infection
-#>   3: 2020-03-04    67 infection
-#>   4: 2020-03-05   101 infection
-#>   5: 2020-03-06   125 infection
+#>   3: 2020-03-04    70 infection
+#>   4: 2020-03-05    73 infection
+#>   5: 2020-03-06    92 infection
 #>  ---                           
-#> 207: 2020-05-07   971    report
-#> 208: 2020-05-08  1024    report
-#> 209: 2020-05-09   819    report
-#> 210: 2020-05-10   876    report
-#> 211: 2020-05-11  1657    report
+#> 205: 2020-05-07   724    report
+#> 206: 2020-05-08   744    report
+#> 207: 2020-05-09   624    report
+#> 208: 2020-05-10   648    report
+#> 209: 2020-05-11  1163    report
 ```
 
 ### Compare approaches on simulated data
@@ -317,10 +313,23 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 non_parametric_cases <- nowcast(simulated_reports,
                                 family = "negbin", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
-                                generation_interval = generation_interval, cores = 4, chains = 4,
-                                samples = 1000, return_all = TRUE, model = model,
+                                generation_interval = 7, cores = 4, chains = 4,
+                                samples = 2000, warmup = 1000,
+                                return_all = TRUE, model = model,
                                 verbose = TRUE)
-#> Running for 2000 samples and 72 time steps
+#> Running for 3000 samples and 71 time steps
+#> Warning: There were 5467 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10. See
+#> http://mc-stan.org/misc/warnings.html#maximum-treedepth-exceeded
+#> Warning: Examine the pairs() plot to diagnose sampling problems
+#> Warning: The largest R-hat is NA, indicating chains have not mixed.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#r-hat
+#> Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#bulk-ess
+#> Warning: Tail Effective Samples Size (ESS) is too low, indicating posterior variances and tail quantiles may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#tail-ess
 ```
 
 ### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
@@ -364,12 +373,58 @@ results <- lapply(countries,
                                         family = "negbin",
                                          incubation_period = incubation_period,
                                          reporting_delay = reporting_delay,
-                                         generation_interval = generation_interval, 
-                                         samples = 1000, cores = 4, chains = 4,
+                                         generation_interval = 7, 
+                                         samples = 2000, warmup = 1000,
+                                         cores = 4, chains = 4,
                                          return_all = TRUE, model = model)
         
         return(list(sampling_cases, non_parametric_cases))
                                        })
+#> Warning: The largest R-hat is NA, indicating chains have not mixed.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#r-hat
+#> Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#bulk-ess
+#> Warning: Tail Effective Samples Size (ESS) is too low, indicating posterior variances and tail quantiles may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#tail-ess
+#> Warning: There were 7504 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10. See
+#> http://mc-stan.org/misc/warnings.html#maximum-treedepth-exceeded
+#> Warning: Examine the pairs() plot to diagnose sampling problems
+#> Warning: The largest R-hat is NA, indicating chains have not mixed.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#r-hat
+#> Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#bulk-ess
+#> Warning: Tail Effective Samples Size (ESS) is too low, indicating posterior variances and tail quantiles may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#tail-ess
+#> Warning: There were 8000 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10. See
+#> http://mc-stan.org/misc/warnings.html#maximum-treedepth-exceeded
+#> Warning: Examine the pairs() plot to diagnose sampling problems
+#> Warning: The largest R-hat is NA, indicating chains have not mixed.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#r-hat
+#> Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#bulk-ess
+#> Warning: Tail Effective Samples Size (ESS) is too low, indicating posterior variances and tail quantiles may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#tail-ess
+#> Warning: There were 7988 transitions after warmup that exceeded the maximum treedepth. Increase max_treedepth above 10. See
+#> http://mc-stan.org/misc/warnings.html#maximum-treedepth-exceeded
+#> Warning: Examine the pairs() plot to diagnose sampling problems
+#> Warning: The largest R-hat is NA, indicating chains have not mixed.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#r-hat
+#> Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#bulk-ess
+#> Warning: Tail Effective Samples Size (ESS) is too low, indicating posterior variances and tail quantiles may be unreliable.
+#> Running the chains for more iterations may help. See
+#> http://mc-stan.org/misc/warnings.html#tail-ess
 
 names(results) <- countries
 ```
@@ -385,13 +440,13 @@ names(results) <- countries
 ``` r
 non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 1.1190654 1.3301449 1.3856289 1.3879045 1.4431756 1.740700
-#> 2:   Tuesday 0.8229757 0.9748764 1.0213324 1.0243398 1.0703676 1.324536
-#> 3: Wednesday 0.8312469 0.9691534 1.0134297 1.0143509 1.0572296 1.304087
-#> 4:  Thursday 0.8114591 0.9763905 1.0210896 1.0235535 1.0693038 1.344542
-#> 5:    Friday 0.8617285 1.0056231 1.0486717 1.0524875 1.0962570 1.310068
-#> 6:  Saturday 0.6489438 0.8215581 0.8597265 0.8650650 0.9040898 1.172037
-#> 7:    Sunday 0.7030686 0.8436684 0.8843590 0.8876099 0.9285475 1.128053
+#> 1:    Monday 1.0612804 1.3379198 1.3979104 1.3999619 1.4601711 1.905373
+#> 2:   Tuesday 0.6893334 0.9407431 0.9869856 0.9897406 1.0359467 1.323394
+#> 3: Wednesday 0.7594623 0.9431678 0.9906221 0.9922409 1.0384694 1.342695
+#> 4:  Thursday 0.7494983 0.9266544 0.9709438 0.9741616 1.0184370 1.268216
+#> 5:    Friday 0.7619107 0.9822665 1.0303073 1.0344177 1.0831569 1.395764
+#> 6:  Saturday 0.5860795 0.7632764 0.8020968 0.8048721 0.8443212 1.101315
+#> 7:    Sunday 0.5934522 0.7638819 0.8024100 0.8046052 0.8418437 1.216177
 ```
 
   - Recover reporting delays
@@ -403,9 +458,9 @@ data.table::rbindlist(list(
   non_parametric_cases$rep_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
   non_parametric_cases$rep_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
-#>    parameter      mean         sd
-#> 1:      mean 1.3782441 0.02487498
-#> 2:        sd 0.5689783 0.30851332
+#>    parameter     mean         sd
+#> 1:      mean 1.414904 0.01018756
+#> 2:        sd 0.882964 0.01997711
 ```
 
   - Recover incubation period
@@ -418,8 +473,8 @@ data.table::rbindlist(list(
   non_parametric_cases$inc_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
 #>    parameter      mean          sd
-#> 1:      mean 1.4990592 0.007714307
-#> 2:        sd 0.4329428 0.012153610
+#> 1:      mean 1.4960972 0.006826419
+#> 2:        sd 0.4523496 0.007937645
 ```
 
   - Prepare data for
@@ -502,43 +557,43 @@ country
 purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 #> $Austria
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.5927318 0.7733996 0.8346302 0.8397165 0.8977349 1.263271
-#> 2:   Tuesday 0.6910251 0.9539920 1.0191157 1.0240155 1.0882138 1.432329
-#> 3: Wednesday 0.7147801 1.0365139 1.1092983 1.1132127 1.1843984 1.608283
-#> 4:  Thursday 0.7603698 0.9684866 1.0358921 1.0391132 1.1060063 1.403142
-#> 5:    Friday 0.7801284 1.0498981 1.1199424 1.1218265 1.1882261 1.556453
-#> 6:  Saturday 0.7927248 1.1538379 1.2237964 1.2264513 1.2952796 1.623405
-#> 7:    Sunday 0.7139299 0.9511790 1.0198030 1.0247374 1.0923124 1.426632
+#> 1:    Monday 0.4669745 0.6689007 0.7206945 0.7257355 0.7765343 1.114203
+#> 2:   Tuesday 0.6382305 0.8742759 0.9398685 0.9443072 1.0083197 1.414285
+#> 3: Wednesday 0.6668444 0.9571783 1.0234750 1.0294105 1.0964797 1.493047
+#> 4:  Thursday 0.6334571 0.9009634 0.9662293 0.9720001 1.0377843 1.523515
+#> 5:    Friday 0.7669587 1.0156918 1.0888544 1.0946703 1.1689886 1.556046
+#> 6:  Saturday 0.8266859 1.1656979 1.2447583 1.2506084 1.3292541 1.737623
+#> 7:    Sunday 0.6253702 0.9092676 0.9771725 0.9832678 1.0510455 1.445325
 #> 
 #> $`United Kingdom`
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.7512457 1.0458641 1.1199028 1.1262421 1.2026619 1.611525
-#> 2:   Tuesday 0.5165016 0.8348616 0.9037527 0.9104707 0.9777852 1.517989
-#> 3: Wednesday 0.6670868 0.9075144 0.9755122 0.9813382 1.0500160 1.450841
-#> 4:  Thursday 0.7001166 0.9516667 1.0217846 1.0272663 1.0963654 1.454746
-#> 5:    Friday 0.7782634 1.0108068 1.0854092 1.0904367 1.1633567 1.603845
-#> 6:  Saturday 0.7511191 1.0299033 1.1025894 1.1054621 1.1747001 1.559523
-#> 7:    Sunday 0.8159668 1.0591894 1.1377700 1.1432255 1.2226046 1.594999
+#> 1:    Monday 0.7388452 1.0083463 1.0885986 1.0948306 1.1731053 1.596544
+#> 2:   Tuesday 0.5233288 0.7665553 0.8272902 0.8332671 0.8953187 1.276188
+#> 3: Wednesday 0.6129372 0.8426309 0.9104190 0.9161048 0.9814633 1.344184
+#> 4:  Thursday 0.5782797 0.8860045 0.9557673 0.9611856 1.0290832 1.493742
+#> 5:    Friday 0.6916695 0.9559284 1.0269914 1.0331561 1.1053419 1.567411
+#> 6:  Saturday 0.6863300 0.9763633 1.0483026 1.0552607 1.1243660 1.643847
+#> 7:    Sunday 0.7350129 1.0248281 1.0994692 1.1061950 1.1807101 1.689201
 #> 
 #> $`United States of America`
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.7664894 0.9108803 0.9503306 0.9518160 0.9900741 1.176280
-#> 2:   Tuesday 0.7810508 0.9447378 0.9842269 0.9882454 1.0305802 1.227700
-#> 3: Wednesday 0.7835703 0.9360037 0.9756947 0.9762278 1.0140231 1.193930
-#> 4:  Thursday 0.8134383 0.9478350 0.9861615 0.9881642 1.0258865 1.236909
-#> 5:    Friday 0.8788655 1.0425256 1.0871017 1.0883173 1.1308972 1.342752
-#> 6:  Saturday 0.9301455 1.0918874 1.1389828 1.1434254 1.1935769 1.395370
-#> 7:    Sunday 0.8476215 1.0357152 1.0750295 1.0782591 1.1195598 1.354348
+#> 1:    Monday 0.7560342 0.8848475 0.9195014 0.9215024 0.9559357 1.133765
+#> 2:   Tuesday 0.7744194 0.9194093 0.9554675 0.9574450 0.9929311 1.192861
+#> 3: Wednesday 0.7793832 0.8968170 0.9325586 0.9341981 0.9702118 1.163909
+#> 4:  Thursday 0.7428890 0.9058808 0.9430109 0.9442855 0.9806517 1.182489
+#> 5:    Friday 0.8394010 1.0089842 1.0495585 1.0511028 1.0914278 1.291866
+#> 6:  Saturday 0.9318711 1.0879335 1.1300293 1.1338715 1.1753839 1.389428
+#> 7:    Sunday 0.8361640 1.0180410 1.0563070 1.0575948 1.0961447 1.296545
 #> 
 #> $Russia
-#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
-#> 1:    Monday 0.7173941 0.9959770 1.0556791 1.0603599 1.121556 1.418810
-#> 2:   Tuesday 0.6806643 0.9224963 0.9815973 0.9862169 1.043192 1.374461
-#> 3: Wednesday 0.7129118 0.9516524 1.0106674 1.0146315 1.070632 1.468565
-#> 4:  Thursday 0.7686629 1.0418027 1.1107470 1.1149173 1.182414 1.563897
-#> 5:    Friday 0.7733246 1.0115712 1.0755805 1.0785990 1.139767 1.511377
-#> 6:  Saturday 0.8384414 1.0766263 1.1408221 1.1472256 1.210748 1.606291
-#> 7:    Sunday 0.7136652 0.9641468 1.0227347 1.0266152 1.084384 1.379870
+#>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
+#> 1:    Monday 0.5128884 0.8444914 0.9339511 0.9423040 1.0272943 1.784059
+#> 2:   Tuesday 0.5466355 0.8736421 0.9610450 0.9716258 1.0591236 1.901598
+#> 3: Wednesday 0.5129630 0.7561033 0.8372503 0.8471555 0.9266051 1.595401
+#> 4:  Thursday 0.6175618 0.9888030 1.0913885 1.1027854 1.2051573 2.024116
+#> 5:    Friday 0.5622044 0.8811856 0.9682046 0.9787580 1.0648672 1.580794
+#> 6:  Saturday 0.6651156 1.0959534 1.2099567 1.2215629 1.3360609 2.335221
+#> 7:    Sunday 0.5260889 0.8386355 0.9231650 0.9358084 1.0221042 1.604754
 ```
 
   - Prepare data for

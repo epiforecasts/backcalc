@@ -56,6 +56,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     samples = 1000,
                     warmup = 1000,
                     estimate_rt = FALSE,
+                    adapt_delta = 0.99,
                     return_all = FALSE,
                     verbose = FALSE){
   
@@ -151,7 +152,6 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 1, sd = 0.4),
-                            day_of_week_eff= rnorm(7, 1, 0.1),
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
@@ -178,18 +178,18 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
   if (verbose) {
     message(paste0("Running for ",samples + warmup," samples and ", data$t," time steps"))
   }
-  
-  fit <- rstan::sampling(model,
-                           data = data,
-                           chains = chains,
-                           init = init_fun,
-                           iter = samples + warmup, 
-                           warmup = warmup,
-                           cores = cores,
-                           refresh = ifelse(verbose, 50, 0))
-    
-    
-    
+
+  fit <-
+    rstan::sampling(model,
+                    data = data,
+                    chains = chains,
+                    init = init_fun,
+                    iter = samples + warmup, 
+                    warmup = warmup,
+                    cores = cores,
+                    control = list(adapt_delta = adapt_delta),
+                    refresh = ifelse(verbose, 50, 0))
+
     # Extract parameters of interest from the fit -----------------------------
     
     ## Extract sample from stan object
