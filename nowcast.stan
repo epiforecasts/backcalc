@@ -94,30 +94,16 @@ data {
 }
 
 transformed data{
-  vector[max_rep] delay;             // report delay pdf
-  vector[max_inc] incubation;        // incubation period pdf
-  // int<lower = 0> weekly_cases[t];    // weekly observed cases
-  // int<lower = 0> cum_cases[t];       // cumulative cases
   real r_alpha;                      // alpha parameter of the R gamma prior
   real r_beta;                       // beta parameter of the R gamma prior
 
   // calculate alpha and beta for gamma distribution
   r_alpha = (r_mean / r_sd)^2;
   r_beta = (r_sd^2) / r_mean;
-  
-  // // calculate weekly cases
-  // cum_cases[1] = cases[1];
-  // weekly_cases[1] = cases[1];
-  // for (s in 2:t) { 
-  //   cum_cases[s] = cum_cases[s - 1] + cases[s];
-  //   weekly_cases[s] = cum_cases[s] - cum_cases[max(1, s - 7)];
-  // }
 }
 parameters{
   vector<lower = 0>[t] noise;                      // noise on the mean shifted observed cases
   simplex[7] day_of_week_eff_raw;                   // day of week reporting effect + control parameters
-  // vector[7] mu;
-  // cholesky_factor_corr[7] L_Sigma;
   real <lower = 0> inc_mean;                       // mean of incubation period
   real <lower = 0> inc_sd;                         // sd of incubation period
   real <lower = 0> rep_mean;                       // mean of reporting delay
@@ -134,9 +120,6 @@ transformed parameters {
   vector<lower = 0>[t] infections;                        // infections over time
   vector<lower = 0>[t] onsets;                            // onsets over time
   vector<lower = 0>[t] reports;                           // reports over time
-  // vector<lower = 0>[t] cum_reports;                       // cumulative reported cases (unadjusted for reporting)
-  // vector<lower = 0>[t] weekly_reports;                    // weekly reported cases
-  //simplex[7] day_of_week_eff_unscaled;                    // unscaled day of week effect
   vector[7] day_of_week_eff;                              // day of the week effect
   vector[estimate_r > 0 ? max_gt : 0] rev_generation_time;// reversed generation time pdf
   vector[estimate_r > 0 ? t : 0] infectiousness;          // infections over time
@@ -153,13 +136,12 @@ transformed parameters {
         discretised_lognormal_pmf(max_rep - j + 1, rep_mean, rep_sd);
   }
     
-  // define day of the week effect
-  //day_of_week_eff_unscaled = softmax(day_of_week_eff_raw);
+  // // define day of the week effect
   day_of_week_eff = 7 * day_of_week_eff_raw;
 
   // generate infections from backcalculated and non-parameteric noise (squared)
   for (s in 1:t) {
-      infections[s] = shifted_cases[s] * noise[s];
+    infections[s] = shifted_cases[s] * noise[s];
   }
   
   // onsets from infections
@@ -168,13 +150,7 @@ transformed parameters {
   // reports from onsets
   reports = convolve(onsets, rev_delay, 1);
 
-  // // calculate cumulative reports
-  // cum_reports = cumulative_sum(reports);
-  // 
   for (s in 1:t) {
-    // // calculate weekly reports
-    // weekly_reports[s] = s == 1 ? cum_reports[1] : cum_reports[s] - cum_reports[max(1, s - 7)];
-    
     // add reporting effects (adjust for simplex scale)
     reports[s] *= day_of_week_eff[day_of_week[s]];
   }
@@ -197,28 +173,19 @@ transformed parameters {
 }
 
 model {
-  // //prior day of the week effect
-  // day_of_week_eff_raw ~ multi_normal_cholesky(mu, L_Sigma);
-  // mu ~ normal(0, 1);
-  // // this is uniform over all correlation matrices
-  // L_Sigma ~ lkj_corr_cholesky(1.0);
-  
   // reporting overdispersion
   rep_phi ~ exponential(1);
 
   // noise on median shift
-  noise[1] ~ normal(1, 0.5) T[0,];
-  for (i in 2:t) {
-    noise[i] ~ normal(noise[i - 1], 0.1) T[0,];
+  for (i in 1:t) {
+    noise[i] ~ normal(1,0.4) T[0,];
   }
 
   // daily cases given reports
   if (model_type == 1) {
     target += poisson_lpmf(cases | reports);
-    // target += poisson_lpmf(weekly_cases[7:t] | weekly_reports[7:t]);
   }else{
     target += neg_binomial_2_lpmf(cases | reports, rep_phi);
-    // target += neg_binomial_2_lpmf(weekly_cases[7:t] | weekly_reports[7:t], rep_phi);
   }
 
   // penalised priors for incubation period, and report delay
@@ -235,7 +202,7 @@ model {
     // initial prior on R
     R[1] ~ gamma(r_alpha, r_beta);
     
-   for (s in 2:t) {
+   for (s in 1:t) {
      {
        // rescale previous R and overall sd prior for gamma
        real r_mean_ = R[s - 1];

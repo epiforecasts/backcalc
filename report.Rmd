@@ -349,7 +349,7 @@ summarised_cases <- data.table::copy(reported_cases)[, median := confirm][, type
 
 
 summarised_results <- purrr::map2(results, names(results),
-                                  ~ summarise_nowcasting_approaches(.x[[1]], .x[[2]])[, region := .y])
+                                  ~ summarise_nowcasting_approaches(.x[[1]], .x[[2]])[,region := .y])
 
 summarised_results <- data.table::rbindlist(summarised_results)
 all_country_data <- data.table::rbindlist(list(summarised_cases, summarised_results), fill = TRUE)

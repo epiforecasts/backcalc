@@ -155,12 +155,12 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
                             rep_phi = rexp(1, 1))
 
                         if (estimate_rt) {
-                        out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                                    scale = (rt_prior$sd^2) / rt_prior$mean)
-                        out$gt_mean <- truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
-                                                             sd = generation_time$mean_sd)
-                        out$gt_sd <-  truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
-                                                            sd = generation_time$sd_sd)
+                        out$R <- rep(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                                    scale = (rt_prior$sd^2) / rt_prior$mean), data$t)
+                        out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
+                                                             sd = generation_time$mean_sd))
+                        out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
+                                                            sd = generation_time$sd_sd))
                         }
 
                 return(out)
