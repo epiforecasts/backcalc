@@ -278,10 +278,8 @@ non_parametric_infections <- non_parametric_cases$infections[,
                  top = quantile(value, 0.975)), by = c("date")][,
                  type := "Non-parametric"]
 
-non_parametric_prior_infections <- non_parametric_cases$prior_infections[,
-               .(median = median(value), bottom = quantile(value, 0.025),
-                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
-                 top = quantile(value, 0.975)), by = c("date")][,
+non_parametric_prior_infections <- non_parametric_cases$prior_infections[sample == 1,
+               .(median = value), by = c("date")][,
                  type := "Infections prior"]
 out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections,
                                   non_parametric_prior_infections), fill = TRUE)

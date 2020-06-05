@@ -32,27 +32,27 @@ functions {
   // apply backsampling and upscaling based on a pdf
   vector backsample(vector cases, vector pdf) {
     int t = num_elements(cases);
-    vector[t] shifted_cases;
+    vector[t] backsampled_cases;
     int max_upscale = min(t, num_elements(pdf));
     int pdf_length = num_elements(pdf);
     vector[pdf_length] cdf;
     
-    shifted_cases = convolve(cases, pdf, 0);
+    backsampled_cases = convolve(cases, pdf, 0);
     
     print("Pre-upscale")
-    print(shifted_cases)
+    print(backsampled_cases)
     
     // apply upscaling
     cdf = cumulative_sum(pdf);
     
     for (i in  1:max_upscale) {
-      shifted_cases[(t - i + 1)] = (shifted_cases[(t - i + 1)] + 1) / cdf[i];
+      backsampled_cases[(t - i + 1)] = (backsampled_cases[(t - i + 1)] + 1) / cdf[i];
     }
     
     //bound last day to equal day before
-    shifted_cases[t] = shifted_cases[t -1];
+    backsampled_cases[t] = backsampled_cases[t -1];
     
-    return(shifted_cases);
+    return(backsampled_cases);
   }
   
   // discretised lognormal pmf
@@ -126,7 +126,7 @@ transformed data{
     print("Cases")
     print(cases)
     shifted_cases = backsample(to_vector(cases) + 0.00001, delay);
-    
+
     print("Onsets")
     print(shifted_cases)
   }
@@ -139,7 +139,7 @@ transformed data{
     print("Incubation")
     print(incubation)
     shifted_cases = backsample(shifted_cases, incubation);
-    
+
     print("Infections")
     print(shifted_cases)
   }
@@ -190,7 +190,7 @@ transformed parameters {
 
   // generate infections from backcalculated and non-parameteric noise (squared)
   for (s in 1:t) {
-      infections[s] = shifted_cases[s] * pow(noise[s], 2.0);
+      infections[s] = shifted_cases[s] * noise[s];
   }
   
   // onsets from infections
