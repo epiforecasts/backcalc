@@ -172,10 +172,10 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 family = "negbin", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_time = generation_time, 
-                                estimate_rt = TRUE,
+                                estimate_rt = FALSE,
                                 rt_prior = rt_prior,
                                 cores = 4, chains = 4,
-                                samples = 2000, warmup = 1000,
+                                samples = 1000, warmup = 1000,
                                 return_all = TRUE, model = model,
                                 verbose = TRUE)
 ```
@@ -278,7 +278,13 @@ non_parametric_infections <- non_parametric_cases$infections[,
                  top = quantile(value, 0.975)), by = c("date")][,
                  type := "Non-parametric"]
 
-out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections), fill = TRUE)
+non_parametric_prior_infections <- non_parametric_cases$prior_infections[,
+               .(median = median(value), bottom = quantile(value, 0.025),
+                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
+                 top = quantile(value, 0.975)), by = c("date")][,
+                 type := "Infections prior"]
+out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections,
+                                  non_parametric_prior_infections), fill = TRUE)
 return(out)
 }
 
@@ -309,6 +315,7 @@ plot_obs <- ggplot2::ggplot(plot_data[type %in% "Simulated reported cases"],
 plot_sims_data <- plot_data[!type %in% "Simulated reported cases"][,
                              type := factor(type, levels = c("Simulated infections",
                                                              "Sampled",
+                                                             "Infections prior",
                                                              "Non-parametric"))]
 plot <- ggplot2::ggplot(plot_sims_data, ggplot2::aes(x = date, col = type, fill = type)) +
  ggplot2::geom_linerange(data = plot_sims_data[!type %in% "Simulated infections"],
@@ -317,9 +324,9 @@ plot <- ggplot2::ggplot(plot_sims_data, ggplot2::aes(x = date, col = type, fill 
  ggplot2::geom_linerange(data = plot_sims_data[!type %in% "Simulated infections"],
                          ggplot2::aes(ymin = lower, ymax = upper), 
                          alpha = 0.4, size = 1.5) +
- ggplot2::geom_line(data = plot_sims_data[type %in% "Simulated infections"],
+ ggplot2::geom_line(data = plot_sims_data[type %in% c("Simulated infections", "Infections prior")],
                      ggplot2::aes(y = median), size = 1.1, alpha = 0.6) +
- ggplot2::geom_point(data = plot_sims_data[type %in% "Simulated infections"],
+ ggplot2::geom_point(data = plot_sims_data[type %in%  c("Simulated infections", "Infections prior")],
                      ggplot2::aes(y = median), size = 1.1, alpha = 0.8, show.legend = FALSE) +
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +

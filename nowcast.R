@@ -43,7 +43,7 @@
 #'                rt_prior = rt_prior,
 #'                model = model,
 #'                cores = 4, chains = 4,
-#'                estimate_rt = FALSE,
+#'                estimate_rt = TRUE,
 #'                verbose = TRUE, return_all = TRUE
 #'                )
 #'
@@ -57,6 +57,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     warmup = 1000,
                     estimate_rt = FALSE,
                     adapt_delta = 0.99,
+                    max_treedepth = 20,
                     return_all = FALSE,
                     verbose = FALSE){
   
@@ -85,33 +86,15 @@ nowcast <- function(reported_cases, family = "poisson",
   
   mean_shift <- incubation_period$mean + reporting_delay$mean
 
-# Integer mean generation interval ----------------------------------------
-
-  mean_int_gt <- round(generation_time$mean)
-
 # Add the mean delay and incubation period on as 0 case days ------------
 
   reported_cases <- data.table::rbindlist(list(
-    data.table::data.table(date = seq(min(reported_cases$date) - mean_shift - mean_int_gt, 
+    data.table::data.table(date = seq(min(reported_cases$date) - mean_shift, 
                                       min(reported_cases$date) - 1, by = "days"),
                            confirm = 0),
     reported_cases
   ))  
   
-  # Calculate smoothed prior cases ------------------------------------------
-
-  shifted_reported_cases <- data.table::copy(reported_cases)[,
-                      confirm := data.table::shift(confirm, n = as.integer(mean_shift),
-                                                   type = "lead", fill = data.table::last(confirm))][,
-                      confirm := data.table::frollmean(confirm, n = mean_int_gt, 
-                                                       align = "center", fill = data.table::last(confirm))][,
-                      confirm := data.table::fifelse(confirm == 0, 1e-4, confirm)]
-  
-  ##Drop median generation interval initial values
-  shifted_reported_cases <- shifted_reported_cases[-(1:mean_int_gt)]
-  reported_cases <- reported_cases[-(1:mean_int_gt)]
-
-
 # Add week day info -------------------------------------------------------
 
   reported_cases <- reported_cases[, day_of_week := lubridate::wday(date, week_start = 1)][,
@@ -161,8 +144,7 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
                             rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd),
                             rep_phi = rexp(1, 1),
                             gt_mean = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  sd = generation_time$mean_sd),
-                            gt_sd = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd, sd = generation_time$sd_sd),
-                            inf_phi = rexp(1, 1))
+                            gt_sd = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd, sd = generation_time$sd_sd))
 
                         if (estimate_rt) {
                         out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
@@ -190,7 +172,8 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
                     iter = samples + warmup, 
                     warmup = warmup,
                     cores = cores,
-                    control = list(adapt_delta = adapt_delta),
+                    control = list(adapt_delta = adapt_delta,
+                                   max_treedepth = max_treedepth),
                     refresh = ifelse(verbose, 50, 0))
 
     # Extract parameters of interest from the fit -----------------------------
@@ -236,6 +219,11 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
 
     
     if (return_all) {
+      ## Add prior infections
+      out$prior_infections <- extract_parameter("prior_infections", 
+                                                samples,
+                                                reported_cases$date)
+        
       out$noise <- extract_parameter("noise", 
                                      samples,
                                      reported_cases$date)
@@ -271,15 +259,11 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
         out$gt_mean <- extract_static_parameter("gt_mean")
         
         out$gt_sd <- extract_static_parameter("gt_sd")
-        
-        out$infection_overdispersion <- extract_static_parameter("inf_phi")
       }
 
       out$fit <- fit
-      
-      ## Add prior infections
-      out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
-                                                       date, value = confirm)]
+    
+        
   }
   
   
