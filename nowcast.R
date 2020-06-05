@@ -46,7 +46,8 @@ nowcast <- function(reported_cases, family = "poisson",
                     samples = 1000,
                     warmup = 1000,
                     return_all = FALSE,
-                    verbose = FALSE){
+                    verbose = FALSE,
+                    prior){
   
   suppressMessages(data.table::setDTthreads(threads = 1))
   
@@ -78,16 +79,13 @@ nowcast <- function(reported_cases, family = "poisson",
   
   # Calculate smoothed prior cases ------------------------------------------
 
-  shifted_reported_cases <- data.table::copy(reported_cases)[,
-                      confirm := data.table::shift(confirm, n = as.integer(mean_shift),
-                                                   type = "lead", fill = data.table::last(confirm))][,
-                      confirm := data.table::frollmean(confirm, n = generation_interval, 
-                                                       align = "center", fill = data.table::last(confirm))][,
-                      confirm := data.table::fifelse(confirm == 0, 1e-4, confirm)]
+  shifted_reported_cases <- prior
   
   ##Drop median generation interval initial values
-  shifted_reported_cases <- shifted_reported_cases[-(1:generation_interval)]
+  # shifted_reported_cases <- shifted_reported_cases[-(1:generation_interval)]
   reported_cases <- reported_cases[-(1:generation_interval)]
+  shifted_reported_cases <- shifted_reported_cases[date %in% reported_cases$date]
+  reported_cases <- reported_cases[date %in% shifted_reported_cases$date]
 
 
 # Add week day info -------------------------------------------------------
@@ -126,7 +124,8 @@ nowcast <- function(reported_cases, family = "poisson",
 
 init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                             day_of_week_eff = as.vector(MCMCpack::rdirichlet(1, rep(1, 7))),
-                            phi = rexp(1, 1))}
+                            phi = rexp(1, 1),
+                            scale_inf = rep(1, data$t))}
   
 # Load and run the stan model ---------------------------------------------
 
@@ -147,7 +146,8 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
                            iter = samples + warmup, 
                            warmup = warmup,
                            cores = cores,
-                           # control = list(adapt_delta = 0.99),
+                           # control = list(adapt_delta = 0.99,
+                           #                max_treedepth = 12),
                            refresh = ifelse(verbose, 50, 0))
     
     
@@ -157,76 +157,7 @@ init_fun <- function(){list(noise = rnorm(data$t, 1, 0.1),
     ## Extract sample from stan object
     samples <- rstan::extract(fit)
     
-    ## Construct reporting list
-    out <- list()
-    
-    ## Generic data.frame reporting function
-    extract_parameter <- function(param, samples, dates) {
-      param_df <- data.table::as.data.table(
-        t(
-          data.table::as.data.table(
-            samples[[param]]
-          )
-        ))
-      
-      param_df <- param_df[, time := 1:.N]
-      param_df <- 
-        data.table::melt(param_df, id.vars = "time",
-                         variable.name = "var")
-      
-      param_df <- param_df[, var := NULL][, sample := 1:.N, by = .(time)]
-      param_df <- param_df[, date := dates, by = .(sample)]
-      param_df <- param_df[, .(parameter = param, time, date, 
-                               sample, value)]
-      
-      return(param_df)
-    }
-    
-    ## Report infections, prior infections and noise
-    out$infections <- extract_parameter("imputed_infections", 
-                                        samples,
-                                        reported_cases$date)
-    
-    if (return_all) {
-      out$noise <- extract_parameter("noise", 
-                                     samples,
-                                     reported_cases$date)
-      
-      out$day_of_week <- extract_parameter("day_of_week_eff", 
-                                           samples,
-                                           1:7)
-      
-      char_day_of_week <- data.table::data.table(wday = c("Monday", "Tuesday", "Wednesday",
-                                                          "Thursday", "Friday", "Saturday",
-                                                          "Sunday"),
-                                                 time = 1:7)
-      out$day_of_week <- out$day_of_week[char_day_of_week, on = "time"][, 
-                                         wday_numeric := time][, 
-                                         time := NULL]
-
-      extract_static_parameter <- function(param) {
-        data.table::data.table(
-          parameter = param,
-          sample = 1:length(samples[[param]]),
-          value = samples[[param]])
-      }
-      
-      out$inc_mean <- extract_static_parameter("inc_mean")
-      
-      out$inc_sd <- extract_static_parameter("inc_sd")
-      
-      out$rep_mean <- extract_static_parameter("rep_mean")
-      
-      out$rep_sd <- extract_static_parameter("rep_sd")
-      
-      out$fit <- fit
-      
-      ## Add prior infections
-      out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
-                                                       date, value = confirm)]
-  }
   
-  
-  return(out)
+  return(list(fit = fit, samples = samples))
 }
 

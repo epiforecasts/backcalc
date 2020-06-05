@@ -42,11 +42,11 @@ data {
 }
 
 parameters{
-  real <lower = 0> case_noise;
   real <lower = 0> inc_mean;         // mean of incubation period
   real <lower = 0> inc_sd;           // sd of incubation period
   real <lower = 0> rep_mean;         // mean of reporting delay
   real <lower = 0> rep_sd;           // sd of incubation period
+  vector <lower = 0>[t] scale_inf;
   // real<lower = 0> phi;
   // vector[7] day_of_week_raw;
   // vector[7] mu;
@@ -55,7 +55,7 @@ parameters{
 
 transformed parameters {
   // simplex[7] day_of_week_eff = softmax(day_of_week_raw);
-  vector<lower = 0>[t] mean_infections = shifted_cases;
+  vector<lower = 0>[t] mean_infections = shifted_cases .* scale_inf;
 }
 
 model {
@@ -84,7 +84,10 @@ model {
   // Reports from onsets
   reports = convolve(onsets, rev_delay); //.* (day_of_week_eff[day_of_week] * 7);
   
-  // reports .*= noise;
+  scale_inf[1] ~ normal(1, 0.1) T[0, ];
+  for(i in 2:t) {
+    scale_inf[i] ~ normal(scale_inf[i - 1], 0.1) T[0, ];
+  }
      
   // Add reporting effects
   // for (s in 1:t) {

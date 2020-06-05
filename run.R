@@ -46,65 +46,26 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
                                    incubation_defs = incubation_defs,
                                    nowcast_lag = 0, approx_delay = TRUE)
 
+epitest <- sampling_cases[type == "infection_upscaled",.(date,confirm = cases)][,.(confirm = round(median(confirm))),by = "date"]
+
 ## Non-parameteric reconstruction
 model <- rstan::stan_model("nowcast.stan")
 non_parametric_cases <- nowcast(simulated_reports,
+                                prior = epitest,
                                 family = "poisson", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
-                                generation_interval = generation_interval, cores = 4, chains = 4,
-                                samples = 1000, return_all = TRUE, model = model, verbose = TRUE)
+                                generation_interval = generation_interval, cores = 1, chains = 1,
+                                samples = 500, return_all = TRUE, model = model, verbose = TRUE)
 
 
 
+res <- rstan::extract(non_parametric_cases$fit)
 
-simulated_cases2 <- simulated_cases[reference %in% c("infection", "report")][, median := cases][,
-                                                                                               type := ifelse(reference == "infection", 
-                                                                                                              "Simulated infections", 
-                                                                                                              "Simulated reported cases")][,
-                                                                                                                                           `:=`(cases = NULL, reference = NULL)]
-
-summarise_nowcasting_approaches <- function(sampling_cases, non_parametric_cases) {
-  sampling_cases <- sampling_cases[type %in% "infection_upscaled"][,
-                                                                   .(median = median(cases), bottom = quantile(cases, 0.025),
-                                                                     lower = quantile(cases, 0.25), upper = quantile(cases, 0.75),
-                                                                     top = quantile(cases, 0.975)), by = c("date", "type")][,
-                                                                                                                            type := "Sampled"]
-  
-  non_parametric_infections <- non_parametric_cases$infections[,
-                                                               .(median = median(value), bottom = quantile(value, 0.025),
-                                                                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
-                                                                 top = quantile(value, 0.975)), by = c("date")][,
-                                                                                                                type := "Non-parametric"]
-  
-  out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections), fill = TRUE)
-  return(out)
-}
-
-summarised_nowcasting_approaches <- summarise_nowcasting_approaches(sampling_cases, non_parametric_cases)
-
-simulated_cases2 <- data.table::rbindlist(list(simulated_cases2,
-                                              summarised_nowcasting_approaches),
-                                         fill = TRUE)
-
-plot_data <- simulated_cases2[date >= as.Date("2020-03-01")][,
-                                                            type := factor(type, levels = c("Simulated infections",
-                                                                                            "Simulated reported cases",
-                                                                                            "Non-parametric",
-                                                                                            "Sampled"))]
-plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = type)) +
-  ggplot2::geom_col(data = plot_data[type %in% "Simulated infections"],
-                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.8) +
-  ggplot2::geom_line(data = plot_data[type %in% "Simulated reported cases"],
-                     ggplot2::aes(y = median), size = 1.1) +
-  ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
-                          ggplot2::aes(ymin = bottom, ymax = top), 
-                          alpha = 0.4, size = 1.5) +
-  ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
-                          ggplot2::aes(ymin = lower, ymax = upper), 
-                          alpha = 0.6, size = 1.5) +
-  cowplot::theme_cowplot() +
-  ggplot2::theme(legend.position = "bottom") +
-  ggplot2::scale_color_brewer(palette = "Dark2") +
-  ggplot2::labs(y = "Cases", x = "Date", col = "Type")
-
-plot
+data.table(cases = apply(res$imputed_infections, 2, median),
+           reports = simulated_reports$confirm,
+           infections = subset(simulated_cases, reference == "infection")$cases,
+           date = simulated_reports$date) %>%
+  ggplot(aes(x = date)) +
+  geom_bar(aes(y = infections), stat = "identity") +
+  geom_line(aes(y = reports), col = "purple") +
+  geom_line(aes(y = cases), col = "orange")
