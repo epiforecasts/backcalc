@@ -26,6 +26,8 @@ knitr::opts_chunk$set(
 
 * We find that the non-parametric approach is better able to reproduce simulated data and returns plausible results when used on reported Covid-19 cases from 4 countries.
 
+* We also implement an in model approach to estimating the time-varying reproduction number but this work is at an early stage.
+
 * These findings are preliminary and more methodological work is required along with comparisons to other approaches.
 
 ## Introduction
@@ -45,6 +47,8 @@ library(cowplot)
 library(lubridate)
 library(purrr)
 library(rstan)
+library(patchwork)
+library(truncnorm)
 
 ## non-parameteric nowcasting function
 source("nowcast.R")
@@ -73,6 +77,7 @@ run_countries <- TRUE
 
 * Uncertainty in reporting delays and incubation periods is enforced by upweighting the prior for these parameters.
 
+* We implement an in model time-varying reproduction number estimation step based on the renewal equation and the imputed infections. 
 
 ```{r}
 model
@@ -82,11 +87,15 @@ model
 
 ### Simulate data
 
-* Define a realistic basic reproduction number estimate that starts at 2, decreases linearly to 0.5, remains constant, increases linearly to 1.2 and then again remains constant.
+* Define a realistic basic reproduction number estimate that starts at 2, decreases linearly to 0.5, remains constant, increases linearly to 1.2, decreases sharply to 1,  again remains constant and finally increases linearly. Noise is added (2% standard deviation) for all values.
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20))
+rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
+         rep(1, 10), (1 + 1:10 * 0.05))
+## Add noise
+##rts <- rts * rnorm(length(rts), 1, 0.02)
+
 rts
 ```
 
@@ -94,9 +103,9 @@ rts
 
 ```{r}
 ## Use the mean default generation interval for covid
-generation_interval <- rowMeans(EpiNow::covid_generation_times)
+generation_time_pdf <- rowMeans(EpiNow::covid_generation_times)
 
-generation_interval
+generation_time_pdf
 ```
 
 ```{r}
@@ -111,6 +120,12 @@ reporting_delay <- list(mean = log(5),
                          sd = log(2),
                          sd_sd = log(1.2),
                          max = 30)
+
+generation_time <- list(mean = EpiNow::covid_generation_times_summary[1, ]$mean,
+                        mean_sd = EpiNow::covid_generation_times_summary[1, ]$mean_sd,
+                        sd = EpiNow::covid_generation_times_summary[1, ]$sd,
+                        sd_sd = EpiNow::covid_generation_times_summary[1, ]$sd_sd,
+                        max = 30)
 
 ## Sample a report delay as a lognormal - take 10 samples
 delay_defs <- EpiNow::lognorm_dist_def(mean = reporting_delay$mean, mean_sd = reporting_delay$mean_sd,
@@ -127,10 +142,11 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
-simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100 , initial_date = as.Date("2020-03-01"),
-                                          generation_interval = generation_interval, delay_def = delay_defs[1, ],
+simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10 , initial_date = as.Date("2020-03-01"),
+                                          generation_interval = generation_time_pdf,
+                                          delay_def = delay_defs[1, ],
                                           incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.4, rep(1, 4), 0.8, 0.8))
+                                          reporting_effect = c(1.2, 1, 1, 1, 1.4, 0.6, 0.8))
 simulated_cases
 ```
     
@@ -141,14 +157,13 @@ simulated_cases
 ## Extract simulated infections
 simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][, cases := NULL]
 
-# Median covid generation interval - used to smooth prior cases by date of infection
-generation_interval <- rowMeans(EpiNow::covid_generation_times)
-generation_interval <- sum(!(cumsum(generation_interval) > 0.5)) + 1   
+## Rt prior
+rt_prior <- list(mean = 2.6, sd = 2)
 
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
                                    target_date = max(simulated_reports$date),
-                                   delay_defs = delay_defs,
+                                   delay_defs = delay_defs, 
                                    incubation_defs = incubation_defs,
                                    nowcast_lag = 0, approx_delay = TRUE)
 
@@ -156,8 +171,11 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 non_parametric_cases <- nowcast(simulated_reports,
                                 family = "negbin", incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
-                                generation_interval = 7, cores = 4, chains = 4,
-                                samples = 2000, warmup = 1000,
+                                generation_time = generation_time, 
+                                estimate_rt = FALSE,
+                                rt_prior = rt_prior,
+                                cores = 4, chains = 4,
+                                samples = 1000, warmup = 1000,
                                 return_all = TRUE, model = model,
                                 verbose = TRUE)
 ```
@@ -197,7 +215,8 @@ results <- lapply(countries,
                                         family = "negbin",
                                          incubation_period = incubation_period,
                                          reporting_delay = reporting_delay,
-                                         generation_interval = 7, 
+                                         generation_time = generation_time, 
+                                         estimate_rt = FALSE,
                                          samples = 2000, warmup = 1000,
                                          cores = 4, chains = 4,
                                          return_all = TRUE, model = model)
@@ -259,7 +278,11 @@ non_parametric_infections <- non_parametric_cases$infections[,
                  top = quantile(value, 0.975)), by = c("date")][,
                  type := "Non-parametric"]
 
-out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections), fill = TRUE)
+non_parametric_prior_infections <- non_parametric_cases$prior_infections[sample == 1,
+               .(median = value), by = c("date")][,
+                 type := "Infections prior"]
+out <- data.table::rbindlist(list(sampling_cases, non_parametric_infections,
+                                  non_parametric_prior_infections), fill = TRUE)
 return(out)
 }
 
@@ -271,31 +294,44 @@ simulated_cases <- data.table::rbindlist(list(simulated_cases,
 ```
 
 
+
 * Plot date. *Note: Here we have cut-off cases prior to the start of March. This truncates the long tale observed in the sampling approach.*
 
-```{r, fig.width = 9, fig.height = 6, dpi = 400, message = FALSE, warning = FALSE} 
-plot_data <- simulated_cases[date >= as.Date("2020-03-01")][,
+```{r, fig.width = 9, fig.height = 9, dpi = 400, message = FALSE, warning = FALSE} 
+plot_data <- simulated_cases[date >= as.Date("2020-03-01")]
+
+plot_obs <- ggplot2::ggplot(plot_data[type %in% "Simulated reported cases"], 
+                           ggplot2::aes(x = date, col = type, fill = type)) +
+  ggplot2::geom_col(ggplot2::aes(y = median), fill = "grey", col = "white",
+                    show.legend = FALSE) +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(legend.position = "none") +
+  ggplot2::scale_color_brewer(palette = "Dark2") +
+  ggplot2::labs(y = "Reported cases", x = "")
+
+
+plot_sims_data <- plot_data[!type %in% "Simulated reported cases"][,
                              type := factor(type, levels = c("Simulated infections",
-                                                             "Simulated reported cases",
-                                                             "Non-parametric",
-                                                             "Sampled"))]
-plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, col = type, fill = type)) +
-  ggplot2::geom_col(data = plot_data[type %in% "Simulated infections"],
-                    ggplot2::aes(y = median), fill = "grey", col = "white", alpha = 0.8) +
-  ggplot2::geom_line(data = plot_data[type %in% "Simulated reported cases"],
-                      ggplot2::aes(y = median), size = 1.1) +
-  ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
+                                                             "Sampled",
+                                                             "Infections prior",
+                                                             "Non-parametric"))]
+plot <- ggplot2::ggplot(plot_sims_data, ggplot2::aes(x = date, col = type, fill = type)) +
+ ggplot2::geom_linerange(data = plot_sims_data[!type %in% "Simulated infections"],
                           ggplot2::aes(ymin = bottom, ymax = top), 
-                         alpha = 0.4, size = 1.5) +
- ggplot2::geom_linerange(data = plot_data[!type %in% "Simulated infections"],
+                         alpha = 0.2, size = 1.5) +
+ ggplot2::geom_linerange(data = plot_sims_data[!type %in% "Simulated infections"],
                          ggplot2::aes(ymin = lower, ymax = upper), 
-                         alpha = 0.6, size = 1.5) +
+                         alpha = 0.4, size = 1.5) +
+ ggplot2::geom_line(data = plot_sims_data[type %in% c("Simulated infections", "Infections prior")],
+                     ggplot2::aes(y = median), size = 1.1, alpha = 0.6) +
+ ggplot2::geom_point(data = plot_sims_data[type %in%  c("Simulated infections", "Infections prior")],
+                     ggplot2::aes(y = median), size = 1.1, alpha = 0.8, show.legend = FALSE) +
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +
   ggplot2::scale_color_brewer(palette = "Dark2") +
-  ggplot2::labs(y = "Cases", x = "Date", col = "Type")
+  ggplot2::labs(y = "Cases by date of infection", x = "Date", col = "Type")
 
-plot
+plot_obs + plot + patchwork::plot_layout(ncol = 1)
 ```
 
 ### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea
@@ -313,7 +349,7 @@ summarised_cases <- data.table::copy(reported_cases)[, median := confirm][, type
 
 
 summarised_results <- purrr::map2(results, names(results),
-                                  ~ summarise_nowcasting_approaches(.x[[1]], .x[[2]])[, region := .y])
+                                  ~ summarise_nowcasting_approaches(.x[[1]], .x[[2]])[,region := .y])
 
 summarised_results <- data.table::rbindlist(summarised_results)
 all_country_data <- data.table::rbindlist(list(summarised_cases, summarised_results), fill = TRUE)
@@ -329,7 +365,7 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
   ggplot2::geom_linerange(ggplot2::aes(ymin = bottom, ymax = top), 
                          alpha = 0.4, size = 1) +
  ggplot2::geom_linerange(ggplot2::aes(ymin = lower, ymax = upper), 
-                         alpha = 0.8, size = 1) +
+                         alpha = 0.6, size = 1) +
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +
   ggplot2::scale_color_brewer(palette = "Dark2") +
