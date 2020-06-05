@@ -50,15 +50,12 @@
 #' out                                   
 nowcast <- function(reported_cases, family = "poisson",
                     incubation_period, reporting_delay,
-                    generation_time, rt_prior, model,
-                    cores = 1,
-                    chains = 2,
-                    samples = 1000,
-                    warmup = 1000,
-                    estimate_rt = FALSE,
-                    adapt_delta = 0.99,
-                    max_treedepth = 20,
-                    return_all = FALSE,
+                    generation_time, rt_prior,
+                    prior_smoothing_window = 7,
+                    model, cores = 1, chains = 2,
+                    samples = 1000, warmup = 1000,
+                    estimate_rt = FALSE, adapt_delta = 0.99,
+                    max_treedepth = 20, return_all = FALSE,
                     verbose = FALSE){
   
   suppressMessages(data.table::setDTthreads(threads = 1))
@@ -84,16 +81,29 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Estimate the mean delay -----------------------------------------------
   
-  mean_shift <- incubation_period$mean + reporting_delay$mean
+  mean_shift <- exp(incubation_period$mean) + exp(reporting_delay$mean)
 
 # Add the mean delay and incubation period on as 0 case days ------------
 
   reported_cases <- data.table::rbindlist(list(
-    data.table::data.table(date = seq(min(reported_cases$date) - mean_shift, 
+    data.table::data.table(date = seq(min(reported_cases$date) - mean_shift - prior_smoothing_window, 
                                       min(reported_cases$date) - 1, by = "days"),
                            confirm = 0),
     reported_cases
   ))  
+
+# Calculate smoothed prior cases ------------------------------------------
+  
+  shifted_reported_cases <- data.table::copy(reported_cases)[,
+                          confirm := data.table::shift(confirm, n = as.integer(mean_shift),
+                          type = "lead", fill = data.table::last(confirm))][,
+                          confirm := data.table::frollmean(confirm, n = prior_smoothing_window, 
+                                                           align = "right", fill = data.table::last(confirm))][,
+                          confirm := data.table::fifelse(confirm == 0, 1e-4, confirm)]
+  
+  ##Drop median generation interval initial values
+  shifted_reported_cases <- shifted_reported_cases[-(1:prior_smoothing_window)]
+  reported_cases <- reported_cases[-(1:prior_smoothing_window)]
   
 # Add week day info -------------------------------------------------------
 
@@ -105,7 +115,7 @@ nowcast <- function(reported_cases, family = "poisson",
   data <- list(
     day_of_week = reported_cases$day_of_week,
     cases = reported_cases$confirm,
-  #  shifted_cases = shifted_reported_cases$confirm,
+    shifted_cases = shifted_reported_cases$confirm,
     t = length(reported_cases$date),
     inc_mean_mean = incubation_period$mean,
     inc_mean_sd = incubation_period$mean_sd,
@@ -142,13 +152,15 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
                             rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd),
-                            rep_phi = rexp(1, 1),
-                            gt_mean = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  sd = generation_time$mean_sd),
-                            gt_sd = truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd, sd = generation_time$sd_sd))
+                            rep_phi = rexp(1, 1))
 
                         if (estimate_rt) {
                         out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
                                                     scale = (rt_prior$sd^2) / rt_prior$mean)
+                        out$gt_mean <- truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
+                                                             sd = generation_time$mean_sd)
+                        out$gt_sd <-  truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
+                                                            sd = generation_time$sd_sd)
                         }
 
                 return(out)
@@ -220,9 +232,8 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
     
     if (return_all) {
       ## Add prior infections
-      out$prior_infections <- extract_parameter("prior_infections", 
-                                                samples,
-                                                reported_cases$date)
+      out$prior_infections <- shifted_reported_cases[, .(parameter = "prior_infections", time = 1:.N, 
+                                                         date, value = confirm, sample = 1)]
         
       out$noise <- extract_parameter("noise", 
                                      samples,
