@@ -10,8 +10,6 @@
 #' reported_cases <- NCoVUtils::format_ecdc_data(reported_cases)
 #' reported_cases <- data.table::as.data.table(reported_cases)[, confirm := cases][, cases := NULL]
 #'  
-#'  
-#'  
 #' generation_time <- list(mean = EpiNow::covid_generation_times_summary[1, ]$mean,
 #'                         mean_sd = EpiNow::covid_generation_times_summary[1, ]$mean_sd,
 #'                         sd = EpiNow::covid_generation_times_summary[1, ]$sd,
@@ -273,8 +271,6 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
       }
 
       out$fit <- fit
-    
-        
   }
   
   
