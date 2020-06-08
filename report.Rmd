@@ -144,9 +144,9 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 ## using a single sample of both distributions                                    
 simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10 , initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_time_pdf,
-                                          delay_def = delay_defs[1, ],
-                                          incubation_def = incubation_defs[1, ],
-                                          reporting_effect = c(1.2, 1, 1, 1, 1.4, 0.6, 0.8))
+                                          delay_def = delay_defs[10, ],
+                                          incubation_def = incubation_defs[10, ],
+                                          reporting_effect = c(1.6, 1, 1, 1, 0.8, 0.4, 1))
 simulated_cases
 ```
     
@@ -169,7 +169,8 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "negbin", incubation_period = incubation_period,
+                                family = "negbin",
+                                incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_time = generation_time, 
                                 estimate_rt = FALSE,
@@ -323,7 +324,7 @@ plot <- ggplot2::ggplot(plot_sims_data, ggplot2::aes(x = date, col = type, fill 
                          ggplot2::aes(ymin = lower, ymax = upper), 
                          alpha = 0.4, size = 1.5) +
  ggplot2::geom_line(data = plot_sims_data[type %in% c("Simulated infections", "Infections prior")],
-                     ggplot2::aes(y = median), size = 1.1, alpha = 0.6) +
+                    ggplot2::aes(y = median), size = 1.1, alpha = 0.6) +
  ggplot2::geom_point(data = plot_sims_data[type %in%  c("Simulated infections", "Infections prior")],
                      ggplot2::aes(y = median), size = 1.1, alpha = 0.8, show.legend = FALSE) +
   cowplot::theme_cowplot() +
