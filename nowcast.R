@@ -52,8 +52,8 @@ nowcast <- function(reported_cases, family = "poisson",
                     prior_smoothing_window = 7,
                     model, cores = 1, chains = 2,
                     samples = 1000, warmup = 1000,
-                    estimate_rt = FALSE, adapt_delta = 0.99,
-                    max_treedepth = 20, return_all = FALSE,
+                    estimate_rt = FALSE, adapt_delta = 0.95,
+                    max_treedepth = 15, return_all = FALSE,
                     verbose = FALSE){
   
   suppressMessages(data.table::setDTthreads(threads = 1))
@@ -145,7 +145,9 @@ nowcast <- function(reported_cases, family = "poisson",
 
 # Set up initial conditions fn --------------------------------------------
 
-init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, mean = 1, sd = 0.4),
+init_fun <- function(){out <- list(
+                            initial_noise = truncnorm::rtruncnorm(1, a = 0, mean = 1, sd = 0.4),
+                            noise_diff = truncnorm::rtruncnorm(data$t - 1, a = 0, mean = 1, sd = 0.1),
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
@@ -153,8 +155,9 @@ init_fun <- function(){out <- list(noise = truncnorm::rtruncnorm(data$t, a = 0, 
                             rep_phi = rexp(1, 1))
 
                         if (estimate_rt) {
-                        out$R <- rep(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                                    scale = (rt_prior$sd^2) / rt_prior$mean), data$t)
+                        out$initial_R <- array(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                                    scale = (rt_prior$sd^2) / rt_prior$mean))
+                        out$diff_R <- truncnorm::rtruncnorm(data$t - 1, a = 0, mean = 1, sd = 0.1)
                         out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
