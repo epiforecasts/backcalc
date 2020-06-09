@@ -74,9 +74,13 @@ nowcast <- function(reported_cases, family = "poisson",
   reported_cases <- reported_cases[is.na(confirm), confirm := 0 ][,.(date = date, confirm)]
   reported_cases <- data.table::setorder(reported_cases, date)
   
-  ## Filter out 0 reported cases
-  reported_cases <- reported_cases[, cum_cases := cumsum(confirm)][cum_cases > 0][, cum_cases := NULL]
-
+  ## Filter out 0 reported cases from the end of the data
+  reported_cases <- reported_cases[order(-date)][, 
+                                cum_cases := cumsum(confirm)][cum_cases > 0][, cum_cases := NULL]
+  ## Filter out 0 reported cases from the beginning of the data
+  reported_cases <- reported_cases[order(date)][,
+                                cum_cases := cumsum(confirm)][cum_cases > 0][, cum_cases := NULL]
+  
 # Estimate the mean delay -----------------------------------------------
   
   mean_shift <- exp(incubation_period$mean) + exp(reporting_delay$mean)
