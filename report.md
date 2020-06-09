@@ -418,17 +418,17 @@ simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10 , initial_date
                                           reporting_effect = c(1.6, 1, 1, 1, 0.8, 0.4, 1))
 simulated_cases
 #>            date cases reference
-#>   1: 2020-03-02     3 infection
-#>   2: 2020-03-03    11 infection
-#>   3: 2020-03-04     4 infection
-#>   4: 2020-03-05     9 infection
-#>   5: 2020-03-06     9 infection
+#>   1: 2020-03-02     7 infection
+#>   2: 2020-03-03     6 infection
+#>   3: 2020-03-04     6 infection
+#>   4: 2020-03-05    10 infection
+#>   5: 2020-03-06    15 infection
 #>  ---                           
-#> 262: 2020-05-27    84    report
-#> 263: 2020-05-28    91    report
-#> 264: 2020-05-29    72    report
-#> 265: 2020-05-30    34    report
-#> 266: 2020-05-31    95    report
+#> 267: 2020-05-27   192    report
+#> 268: 2020-05-28   146    report
+#> 269: 2020-05-29   144    report
+#> 270: 2020-05-30    77    report
+#> 271: 2020-05-31   214    report
 ```
 
 ### Compare approaches on simulated data
@@ -446,6 +446,7 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
                                    delay_defs = delay_defs, 
                                    incubation_defs = incubation_defs,
                                    nowcast_lag = 0, approx_delay = TRUE)
+#> Warning in stats::rnbinom(n, x + 1, prob): NAs produced
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
@@ -459,7 +460,7 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 samples = 1000, warmup = 1000,
                                 return_all = TRUE, model = model,
                                 verbose = TRUE)
-#> Running for 2000 samples and 95 time steps
+#> Running for 2000 samples and 99 time steps
 ```
 
 ### Compare approaches on reported Covid-19 cases in Austria, the United Kingdom, United States of America and Russia
@@ -495,22 +496,25 @@ results <- lapply(countries,
                                            target_date = max(cases$date),
                                            delay_defs = delay_defs,
                                            incubation_defs = incubation_defs,
-                                           approx_delay = TRUE)
+                                           nowcast_lag = 0, approx_delay = TRUE)
         
         message("Non-parametric nowcasting for: ", country)
         ## Non-parametric reconstruction
         non_parametric_cases <- nowcast(cases,
                                         family = "negbin",
-                                         incubation_period = incubation_period,
-                                         reporting_delay = reporting_delay,
-                                         generation_time = generation_time, 
-                                         estimate_rt = FALSE,
-                                         samples = 2000, warmup = 1000,
-                                         cores = 4, chains = 4,
-                                         return_all = TRUE, model = model)
+                                        incubation_period = incubation_period,
+                                        reporting_delay = reporting_delay,
+                                        generation_time = generation_time, 
+                                        estimate_rt = FALSE,
+                                        samples = 2000, warmup = 1000,
+                                        cores = 4, chains = 4,
+                                        return_all = TRUE, model = model)
         
         return(list(sampling_cases, non_parametric_cases))
                                        })
+#> Warning in stats::rnbinom(n, x + 1, prob): NAs produced
+
+#> Warning in stats::rnbinom(n, x + 1, prob): NAs produced
 #> Warning: The largest R-hat is NA, indicating chains have not mixed.
 #> Running the chains for more iterations may help. See
 #> http://mc-stan.org/misc/warnings.html#r-hat
@@ -520,6 +524,9 @@ results <- lapply(countries,
 #> Warning: Tail Effective Samples Size (ESS) is too low, indicating posterior variances and tail quantiles may be unreliable.
 #> Running the chains for more iterations may help. See
 #> http://mc-stan.org/misc/warnings.html#tail-ess
+#> Warning in stats::rnbinom(n, x + 1, prob): NAs produced
+
+#> Warning in stats::rnbinom(n, x + 1, prob): NAs produced
 #> Warning: The largest R-hat is NA, indicating chains have not mixed.
 #> Running the chains for more iterations may help. See
 #> http://mc-stan.org/misc/warnings.html#r-hat
@@ -544,13 +551,13 @@ names(results) <- countries
 ``` r
 non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.      Max.
-#> 1:    Monday 1.3369202 1.5842655 1.6453327 1.6480013 1.7101078 1.9757299
-#> 2:   Tuesday 0.7833156 0.9468587 0.9916598 0.9939709 1.0384850 1.2884126
-#> 3: Wednesday 0.7946190 0.9759884 1.0210021 1.0214155 1.0644876 1.2717640
-#> 4:  Thursday 0.7892070 0.9684665 1.0150213 1.0170034 1.0627604 1.2888899
-#> 5:    Friday 0.6017638 0.7742097 0.8112007 0.8132337 0.8488045 1.0892138
-#> 6:  Saturday 0.2945963 0.3830878 0.4038710 0.4047661 0.4252494 0.5432345
-#> 7:    Sunday 0.8623446 1.0545449 1.1000493 1.1016090 1.1469431 1.4129305
+#> 1:    Monday 1.3321460 1.5882585 1.6496200 1.6516356 1.7106489 1.9419309
+#> 2:   Tuesday 0.7691495 0.9483523 0.9913809 0.9938828 1.0343125 1.2626165
+#> 3: Wednesday 0.8299799 0.9997393 1.0424612 1.0439416 1.0860256 1.3065855
+#> 4:  Thursday 0.7630133 0.9711470 1.0132362 1.0146981 1.0553339 1.2301869
+#> 5:    Friday 0.6734807 0.8026501 0.8400650 0.8408368 0.8777410 1.0472130
+#> 6:  Saturday 0.3083335 0.3791148 0.3992795 0.4001306 0.4199423 0.5164145
+#> 7:    Sunday 0.8195839 1.0119234 1.0513874 1.0548746 1.0964231 1.3402281
 ```
 
   - Recover reporting delays
@@ -563,8 +570,8 @@ data.table::rbindlist(list(
   non_parametric_cases$rep_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
 #>    parameter      mean          sd
-#> 1:      mean 1.6085694 0.009863083
-#> 2:        sd 0.6912171 0.018261529
+#> 1:      mean 1.6085744 0.009525181
+#> 2:        sd 0.6916494 0.017710901
 ```
 
   - Recover incubation period
@@ -577,8 +584,8 @@ data.table::rbindlist(list(
   non_parametric_cases$inc_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
 #>    parameter      mean          sd
-#> 1:      mean 1.6206334 0.006736578
-#> 2:        sd 0.4177812 0.007025729
+#> 1:      mean 1.6207186 0.006204358
+#> 2:        sd 0.4177093 0.006923570
 ```
 
   - Prepare data for
@@ -676,44 +683,44 @@ country
 ``` r
 purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 #> $Austria
-#>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.4474820 0.6631649 0.7146622 0.7202167 0.7731108 1.179633
-#> 2:   Tuesday 0.6505533 0.8939427 0.9624841 0.9688629 1.0357200 1.471953
-#> 3: Wednesday 0.6854817 0.9553799 1.0248556 1.0316792 1.1020187 1.501045
-#> 4:  Thursday 0.5919494 0.8892024 0.9588719 0.9645361 1.0328039 1.450184
-#> 5:    Friday 0.7230573 1.0051970 1.0841009 1.0914188 1.1695866 1.742216
-#> 6:  Saturday 0.7411919 1.1439784 1.2245115 1.2308776 1.3110719 1.863528
-#> 7:    Sunday 0.6271439 0.9136233 0.9868094 0.9924087 1.0607644 1.556434
+#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
+#> 1:    Monday 0.4553486 0.6597074 0.7133279 0.7191980 0.773323 1.181415
+#> 2:   Tuesday 0.6435543 0.8928487 0.9620136 0.9676083 1.037469 1.487350
+#> 3: Wednesday 0.6217315 0.9533216 1.0260229 1.0319547 1.102476 1.551721
+#> 4:  Thursday 0.6351770 0.8889191 0.9575475 0.9639907 1.033012 1.434612
+#> 5:    Friday 0.7145081 1.0078820 1.0844727 1.0910157 1.166702 1.736259
+#> 6:  Saturday 0.8535405 1.1456865 1.2271969 1.2338026 1.316128 1.818715
+#> 7:    Sunday 0.6418429 0.9157637 0.9863031 0.9924299 1.060449 1.463494
 #> 
 #> $`United Kingdom`
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.6803021 0.9866439 1.0602794 1.0700432 1.1477666 1.614187
-#> 2:   Tuesday 0.5397602 0.7555265 0.8198134 0.8256660 0.8883956 1.251244
-#> 3: Wednesday 0.5843771 0.8475234 0.9107135 0.9163452 0.9797718 1.438202
-#> 4:  Thursday 0.6126897 0.8800352 0.9487254 0.9563363 1.0242356 1.462174
-#> 5:    Friday 0.6456273 0.9552996 1.0288896 1.0373393 1.1115975 1.608127
-#> 6:  Saturday 0.7163423 0.9896360 1.0652397 1.0705833 1.1459189 1.612740
-#> 7:    Sunday 0.7503461 1.0391432 1.1163386 1.1236868 1.2011017 1.739417
+#> 1:    Monday 0.6234883 0.9875295 1.0647041 1.0714275 1.1473135 1.795143
+#> 2:   Tuesday 0.5369750 0.7564222 0.8184997 0.8237987 0.8834020 1.288060
+#> 3: Wednesday 0.6056202 0.8462580 0.9121482 0.9172414 0.9814343 1.414607
+#> 4:  Thursday 0.6096313 0.8767529 0.9490498 0.9557929 1.0271495 1.476008
+#> 5:    Friday 0.6911887 0.9549942 1.0297273 1.0357731 1.1112875 1.563819
+#> 6:  Saturday 0.7023413 0.9896022 1.0652523 1.0720039 1.1476437 1.560209
+#> 7:    Sunday 0.7346365 1.0391061 1.1184163 1.1239625 1.2031509 1.705964
 #> 
 #> $`United States of America`
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.7181750 0.8667127 0.9015733 0.9043926 0.9387885 1.121429
-#> 2:   Tuesday 0.7471251 0.9022849 0.9405729 0.9430080 0.9817950 1.222220
-#> 3: Wednesday 0.7366916 0.8856148 0.9222540 0.9237178 0.9607083 1.142122
-#> 4:  Thursday 0.7526877 0.9129092 0.9513193 0.9530592 0.9907638 1.221722
-#> 5:    Friday 0.8181803 1.0210160 1.0649151 1.0660029 1.1098669 1.299057
-#> 6:  Saturday 0.9306471 1.0996984 1.1455769 1.1483541 1.1938481 1.427301
-#> 7:    Sunday 0.8471759 1.0185457 1.0596267 1.0614653 1.1033324 1.349784
+#> 1:    Monday 0.7090682 0.8663433 0.9029952 0.9045882 0.9408033 1.199528
+#> 2:   Tuesday 0.7588929 0.9038461 0.9415399 0.9439228 0.9813710 1.217412
+#> 3: Wednesday 0.7501136 0.8849629 0.9213808 0.9232633 0.9586499 1.190471
+#> 4:  Thursday 0.7354623 0.9123161 0.9508406 0.9533327 0.9924186 1.220941
+#> 5:    Friday 0.8049083 1.0224692 1.0645537 1.0661633 1.1085772 1.397414
+#> 6:  Saturday 0.9236516 1.1016174 1.1457626 1.1489255 1.1921687 1.414941
+#> 7:    Sunday 0.8111929 1.0179732 1.0585695 1.0598043 1.0998705 1.362117
 #> 
 #> $Russia
 #>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
-#> 1:    Monday 0.5183437 0.8709702 0.9679553 0.9795657 1.078561 1.772725
-#> 2:   Tuesday 0.5201567 0.8882500 0.9844886 0.9976446 1.094518 2.164709
-#> 3: Wednesday 0.4255412 0.7501975 0.8372231 0.8472063 0.930315 1.497372
-#> 4:  Thursday 0.5042368 0.9297654 1.0317847 1.0450098 1.146285 1.926877
-#> 5:    Friday 0.5088176 0.8833093 0.9808813 0.9935107 1.088519 1.769715
-#> 6:  Saturday 0.6258507 1.0612630 1.1793020 1.1976038 1.315299 2.178119
-#> 7:    Sunday 0.4967375 0.8337423 0.9262764 0.9394591 1.032438 1.753042
+#> 1:    Monday 0.6945279 0.9380559 0.9992149 1.0034149 1.063491 1.510367
+#> 2:   Tuesday 0.6705700 0.8975525 0.9543772 0.9586771 1.015618 1.342484
+#> 3: Wednesday 0.6615815 0.8873466 0.9431653 0.9475883 1.003029 1.358241
+#> 4:  Thursday 0.6502685 0.9620644 1.0264623 1.0310391 1.093293 1.479560
+#> 5:    Friday 0.7254960 0.9480915 1.0096342 1.0140335 1.074367 1.412991
+#> 6:  Saturday 0.7355654 1.0195432 1.0863036 1.0929837 1.159355 1.594220
+#> 7:    Sunday 0.6639357 0.8895024 0.9481209 0.9522635 1.010432 1.389664
 ```
 
   - Prepare data for
@@ -743,9 +750,9 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
   ggplot2::geom_col(data = all_country_data[type %in% "Reported Cases"],
                     ggplot2::aes(y = median), fill = "grey", col = "white") +
   ggplot2::geom_linerange(ggplot2::aes(ymin = bottom, ymax = top), 
-                         alpha = 0.4, size = 1) +
+                         alpha = 0.2, size = 1) +
  ggplot2::geom_linerange(ggplot2::aes(ymin = lower, ymax = upper), 
-                         alpha = 0.6, size = 1) +
+                         alpha = 0.4, size = 1) +
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +
   ggplot2::scale_color_brewer(palette = "Dark2") +
