@@ -52,8 +52,8 @@ nowcast <- function(reported_cases, family = "poisson",
                     prior_smoothing_window = 7,
                     model, cores = 1, chains = 2,
                     samples = 1000, warmup = 1000,
-                    estimate_rt = FALSE, adapt_delta = 0.99,
-                    max_treedepth = 20, return_all = FALSE,
+                    estimate_rt = FALSE, adapt_delta = 0.95,
+                    max_treedepth = 15, return_all = FALSE,
                     verbose = FALSE){
   
   suppressMessages(data.table::setDTthreads(threads = 1))
