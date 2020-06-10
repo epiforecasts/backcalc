@@ -239,7 +239,7 @@ model {
 
     // initial prior on R
     initial_R ~ gamma(r_alpha, r_beta);
-    R_diff ~ lognormal(initial_R_mean, 1);
+    R_diff ~ lognormal(initial_R_mean, 0.1);
      
     // penalised_prior on generation interval
     target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
