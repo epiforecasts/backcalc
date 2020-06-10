@@ -53,13 +53,15 @@ generate_simulations <- function(rts, initial_cases,
   
   dist_defs <- purrr::transpose(dist_defs)
   
+  safe_sim <- purrr::safely(EpiNow::simulate_cases)
+  
   out <- purrr::map(dist_defs,
                     function(dist) {
-                      EpiNow::simulate_cases(rts, initial_cases, initial_date = as.Date("2020-03-01"),
-                                             generation_interval = dist$generation_time,
-                                             delay_def = dist$delay,
-                                             incubation_def = dist$incubation,
-                                             reporting_effect = reporting_effect)
+                      safe_sim(rts, initial_cases, initial_date = as.Date("2020-03-01"),
+                               generation_interval = dist$generation_time,
+                               delay_def = dist$delay,
+                               incubation_def = dist$incubation,
+                               reporting_effect = reporting_effect)[[1]]
                     })
   
   out <- data.table::rbindlist(out, idcol = "sample")                   

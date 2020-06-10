@@ -127,8 +127,10 @@ simulations <- future.apply::future_lapply(split(scenarios, by = "scenario"),
                                                                   incubation_period = scenario$incubation_period[[1]],
                                                                   reporting_delay = scenario$reporting_delay[[1]],
                                                                   reporting_effect = scenario$reporting_effect[[1]],
-                                                                  samples = 1)},
+                                                                  samples = 10)},
                                            future.scheduling = Inf)
 
 
 simulations <- data.table::rbindlist(simulations, idcol = "scenario")
+
+data.table::fwrite(simulations, here::here("data", "simulations.csv"))
