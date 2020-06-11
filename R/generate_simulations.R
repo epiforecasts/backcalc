@@ -13,13 +13,13 @@ generate_simulations <- function(rts, initial_cases,
                                               max_value = generation_time$max, samples = samples)
   
   generate_pdf <- function(dist, max_value) {
-    ## Define sample delay fn
+    ## Define with 0 day padding
     sample_fn <- function(n, ...) {
-      EpiNow::dist_skel(n = n, 
+      c(0, EpiNow::dist_skel(n = n, 
                         model = dist$model[[1]], 
                         params = dist$params[[1]],
-                        max_value = dist$max_value[[1]], 
-                        ...)
+                        max_value = dist$max_value[[1]] - 1, 
+                        ...))
     }
     
     dist_pdf <- sample_fn(0:max_value, dist = TRUE, cum = FALSE)

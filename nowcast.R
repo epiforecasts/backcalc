@@ -159,9 +159,8 @@ init_fun <- function(){out <- list(
                             rep_phi = rexp(1, 1))
 
                         if (estimate_rt) {
-                        out$initial_R <- array(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                                    scale = (rt_prior$sd^2) / rt_prior$mean))
-                        out$diff_R <- truncnorm::rtruncnorm(data$t - 1, a = 0, mean = 1, sd = 0.1)
+                        out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                                    scale = (rt_prior$sd^2) / rt_prior$mean)
                         out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,

@@ -170,7 +170,7 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "negbin",
+                                family = "poisson",
                                 incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_time = generation_time, 
