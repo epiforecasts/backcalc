@@ -91,10 +91,11 @@ model
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
+rts <- c(rep(3, 10), rep(2, 20), (2 - 1:15 * 0.1),
+         rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
-rts <- rts * rnorm(length(rts), 1, 0.02)
+rts <- rts * rnorm(length(rts), 1, 0.05)
 
 rts
 ```
@@ -153,7 +154,7 @@ simulated_cases
   
 ###  Compare approaches on simulated data
 
-```{r}
+```{r, message = FALSE}
 ## Extract simulated infections
 simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][,
                                      cases := NULL][date >= as.Date("2020-03-11")]
@@ -170,7 +171,7 @@ sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_s
 
 ## Non-parameteric reconstruction
 non_parametric_cases <- nowcast(simulated_reports,
-                                family = "poisson",
+                                family = "negbin",
                                 incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_time = generation_time, 
@@ -258,6 +259,15 @@ data.table::rbindlist(list(
 ))
 ```
 
+* Recover generation time
+
+```{r}
+data.table::rbindlist(list(
+  non_parametric_cases$gt_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
+  non_parametric_cases$gt_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
+))
+```
+
 * Prepare data for plotting
 
 ```{r}
@@ -311,7 +321,8 @@ rts <- data.table::data.table(
   )
 
 rt_sim <- data.table::rbindlist(list(rts, rt_sim), fill = TRUE)
-rt_sim <- rt_sim[, type := factor(type, levels = c("Truth", "Estimated"))]
+rt_sim <- rt_sim[date >= as.Date("2020-03-01")][,
+                 type := factor(type, levels = c("Truth", "Estimated"))]
 ```
 
 
@@ -360,7 +371,9 @@ plot_rt <- ggplot2::ggplot(rt_sim, ggplot2::aes(x = date, col = type, fill = typ
                          ggplot2::aes(ymin = lower, ymax = upper), 
                          alpha = 1, size = 1.5) +
  ggplot2::geom_line(data =  rt_sim[type %in% "Truth"],
-                    ggplot2::aes(y = median), size = 1.1, alpha = 0.8) +
+                    ggplot2::aes(y = median), size = 1.1, alpha = 0.7) +
+ ggplot2::geom_point(data =  rt_sim[type %in% "Truth"],
+                    ggplot2::aes(y = median), size = 1.1, alpha = 1) +
   ggplot2::geom_hline(yintercept = 1, linetype = 2) + 
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +

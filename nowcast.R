@@ -154,8 +154,11 @@ init_fun <- function(){out <- list(
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
-                            rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd),
-                            rep_phi = rexp(1, 1))
+                            rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd))
+                        
+                        if (data$model_type == 1) {
+                          out$rep_phi <- array(rexp(1, 1))
+                        }
 
                         if (estimate_rt) {
                         out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
@@ -271,8 +274,10 @@ init_fun <- function(){out <- list(
       
       if (estimate_rt) {
         out$gt_mean <- extract_static_parameter("gt_mean")
+        out$gt_mean[, value := value.V1][, value.V1 := NULL]
         
         out$gt_sd <- extract_static_parameter("gt_sd")
+        out$gt_sd[, value := value.V1][, value.V1 := NULL]
       }
 
       out$fit <- fit
