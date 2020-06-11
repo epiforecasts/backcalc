@@ -94,7 +94,7 @@ model
 rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
-##rts <- rts * rnorm(length(rts), 1, 0.02)
+rts <- rts * rnorm(length(rts), 1, 0.02)
 
 rts
 ```
@@ -295,6 +295,15 @@ simulated_cases <- data.table::rbindlist(list(simulated_cases,
                                          fill = TRUE)
 ```
 
+* Extract Rt estimates
+
+```{r}
+rt_sim <- non_parametric_cases$R[, .(median = median(value), bottom = quantile(value, 0.025),
+                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
+                 top = quantile(value, 0.975)), by = c("date")]
+
+
+```
 
 
 * Plot date. *Note: Here we have cut-off cases prior to the start of March. This truncates the long tale observed in the sampling approach.*

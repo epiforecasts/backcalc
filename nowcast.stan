@@ -82,7 +82,7 @@ data {
   real gt_sd_mean;                   // prior sd of sd of generation time
   real gt_sd_sd;                     // prior sd of sd of generation time
   int max_gt;                        // maximum generation time
-  int model_type;                    // type of model: 1 = poisson otherwise negative binomial
+  int model_type;                    // type of model: 0 = poisson otherwise negative binomial
   int estimate_r;                    // should the reproduction no be estimated (1 = yes)
 }
 
@@ -110,11 +110,11 @@ parameters{
   real <lower = 0> inc_sd;                            // sd of incubation period
   real <lower = 0> rep_mean;                          // mean of reporting delay
   real <lower = 0> rep_sd;                            // sd of incubation period
-  real<lower = 0> rep_phi;                            // overdispersion of the reporting process
+  real<lower = 0> rep_phi[model_type];                // overdispersion of the reporting process
   vector<lower = 0>[estimate_r > 0 ? t : 0] R;        // reproduction number over time
   real<lower = 0> gt_mean[estimate_r];                // mean of generation time
   real <lower = 0> gt_sd[estimate_r];                 // sd of generation time
-  real<lower = 0> inf_phi[estimate_r];                // overdispersion of the infection process
+  real<lower = 0> inf_phi[model_type*estimate_r];     // overdispersion of the infection process
 }
 
 transformed parameters {
@@ -210,17 +210,17 @@ transformed parameters {
 
 model {
   // reporting overdispersion
-  rep_phi ~ exponential(1);
+  rep_phi[model_type] ~ exponential(1);
 
   // noise on median shift
   initial_noise ~ lognormal(initial_noise_mean, 0.1);
   noise_diff ~ lognormal(initial_noise_mean, 0.1);
 
   // daily cases given reports
-  if (model_type == 1) {
-    target += poisson_lpmf(cases | reports);
-  }else{
+  if (model_type) {
     target += neg_binomial_2_lpmf(cases | reports, rep_phi);
+  }else{
+    target += poisson_lpmf(cases | reports);
   }
 
   // penalised priors for incubation period, and report delay
@@ -245,10 +245,10 @@ model {
     target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * t;
   
     // Likelihood of Rt given infections
-    if (model_type == 1) {
-      target += poisson_lpmf(cases | branch_reports);
+    if (model_type) {
+      target += neg_binomial_2_lpmf(cases | branch_reports, inf_phi[model_type*estimate_r]);
     }else{
-      target += neg_binomial_2_lpmf(cases | branch_reports, inf_phi[estimate_r]);
+      target += poisson_lpmf(cases | branch_reports);
     }
   }
 }

@@ -141,12 +141,11 @@ nowcast <- function(reported_cases, family = "poisson",
   
   ## Set model to poisson or negative binomial
   if (family %in% "poisson") {
-    data$model_type <- 1
+    data$model_type <- 0
   }else if (family %in% "negbin"){
-    data$model_type <- 2
+    data$model_type <- 1
   }
   
-
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){out <- list(
