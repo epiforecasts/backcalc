@@ -141,12 +141,11 @@ nowcast <- function(reported_cases, family = "poisson",
   
   ## Set model to poisson or negative binomial
   if (family %in% "poisson") {
-    data$model_type <- 1
+    data$model_type <- 0
   }else if (family %in% "negbin"){
-    data$model_type <- 2
+    data$model_type <- 1
   }
   
-
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){out <- list(
@@ -155,13 +154,15 @@ init_fun <- function(){out <- list(
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
-                            rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd),
-                            rep_phi = rexp(1, 1))
+                            rep_sd = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$sd,  sd = reporting_delay$sd_sd))
+                        
+                        if (data$model_type == 1) {
+                          out$rep_phi <- array(rexp(1, 1))
+                        }
 
                         if (estimate_rt) {
-                        out$initial_R <- array(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                                    scale = (rt_prior$sd^2) / rt_prior$mean))
-                        out$diff_R <- truncnorm::rtruncnorm(data$t - 1, a = 0, mean = 1, sd = 0.1)
+                        out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                                    scale = (rt_prior$sd^2) / rt_prior$mean)
                         out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
@@ -273,8 +274,10 @@ init_fun <- function(){out <- list(
       
       if (estimate_rt) {
         out$gt_mean <- extract_static_parameter("gt_mean")
+        out$gt_mean[, value := value.V1][, value.V1 := NULL]
         
         out$gt_sd <- extract_static_parameter("gt_sd")
+        out$gt_sd[, value := value.V1][, value.V1 := NULL]
       }
 
       out$fit <- fit

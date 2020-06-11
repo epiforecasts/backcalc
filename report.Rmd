@@ -91,10 +91,11 @@ model
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(2, 20), (2 - 1:15 * 0.1), rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
+rts <- c(rep(3, 10), rep(2, 20), (2 - 1:15 * 0.1),
+         rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
-##rts <- rts * rnorm(length(rts), 1, 0.02)
+rts <- rts * rnorm(length(rts), 1, 0.05)
 
 rts
 ```
@@ -153,7 +154,7 @@ simulated_cases
   
 ###  Compare approaches on simulated data
 
-```{r}
+```{r, message = FALSE}
 ## Extract simulated infections
 simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][,
                                      cases := NULL][date >= as.Date("2020-03-11")]
@@ -258,6 +259,15 @@ data.table::rbindlist(list(
 ))
 ```
 
+* Recover generation time
+
+```{r}
+data.table::rbindlist(list(
+  non_parametric_cases$gt_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
+  non_parametric_cases$gt_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
+))
+```
+
 * Prepare data for plotting
 
 ```{r}
@@ -295,11 +305,30 @@ simulated_cases <- data.table::rbindlist(list(simulated_cases,
                                          fill = TRUE)
 ```
 
+* Extract Rt estimates
+
+```{r}
+rt_sim <- non_parametric_cases$R[, .(median = median(value), bottom = quantile(value, 0.025),
+                 lower = quantile(value, 0.25), upper = quantile(value, 0.75),
+                 top = quantile(value, 0.975), type = "Estimated"), by = c("date")]
 
 
-* Plot date. *Note: Here we have cut-off cases prior to the start of March. This truncates the long tale observed in the sampling approach.*
+rts <- data.table::data.table(
+    date = seq(as.Date("2020-03-01"), 
+               as.Date("2020-03-01") + lubridate::days(length(rts) - 1), by = "days"),
+    median = rts,
+    type = "Truth"
+  )
 
-```{r, fig.width = 9, fig.height = 9, dpi = 400, message = FALSE, warning = FALSE} 
+rt_sim <- data.table::rbindlist(list(rts, rt_sim), fill = TRUE)
+rt_sim <- rt_sim[date >= as.Date("2020-03-01")][,
+                 type := factor(type, levels = c("Truth", "Estimated"))]
+```
+
+
+* Plot example simulation. *Note: Here we have cut-off cases prior to the start of March. This truncates the long tale observed in the sampling approach.*
+
+```{r, fig.width = 9, fig.height = 12, dpi = 400, message = FALSE, warning = FALSE} 
 plot_data <- simulated_cases[date >= as.Date("2020-03-01")]
 
 plot_obs <- ggplot2::ggplot(plot_data[type %in% "Simulated reported cases"], 
@@ -333,7 +362,28 @@ plot <- ggplot2::ggplot(plot_sims_data, ggplot2::aes(x = date, col = type, fill 
   ggplot2::scale_color_brewer(palette = "Dark2") +
   ggplot2::labs(y = "Cases by date of infection", x = "Date", col = "Type")
 
-plot_obs + plot + patchwork::plot_layout(ncol = 1)
+
+plot_rt <- ggplot2::ggplot(rt_sim, ggplot2::aes(x = date, col = type, fill = type)) +
+   ggplot2::geom_linerange(data = rt_sim[!type %in% "Truth"],
+                          ggplot2::aes(ymin = bottom, ymax = top), 
+                         alpha = 0.4, size = 1.5) +
+ ggplot2::geom_linerange(data = rt_sim[!type %in% "Truth"],
+                         ggplot2::aes(ymin = lower, ymax = upper), 
+                         alpha = 1, size = 1.5) +
+ ggplot2::geom_line(data =  rt_sim[type %in% "Truth"],
+                    ggplot2::aes(y = median), size = 1.1, alpha = 0.7) +
+ ggplot2::geom_point(data =  rt_sim[type %in% "Truth"],
+                    ggplot2::aes(y = median), size = 1.1, alpha = 1) +
+  ggplot2::geom_hline(yintercept = 1, linetype = 2) + 
+  cowplot::theme_cowplot() +
+  ggplot2::theme(legend.position = "bottom") +
+  ggplot2::scale_color_manual(values = c("grey", "black")) +
+  ggplot2::labs(y = "Rt", x = "Date", col = "Type")
+
+plot_obs + 
+  plot + 
+  plot_rt +
+  patchwork::plot_layout(ncol = 1)
 ```
 
 ### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea

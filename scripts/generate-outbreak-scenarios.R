@@ -22,7 +22,7 @@ source(here::here("R", "generate_simulations.R"))
 case_scenarios <- data.table::data.table(
   index = 1,
   case_scenario = c("10", "100", "1000"),
-  case = c(10, 100, 100)
+  case = c(10, 100, 1000)
 )
 
 # Rt scenarios ------------------------------------------------------------
