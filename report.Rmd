@@ -91,7 +91,7 @@ model
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(3, 10), rep(2, 20), (2 - 1:15 * 0.1),
+rts <- c(rep(3, 20), rep(2, 20), (2 - 1:15 * 0.1),
          rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
@@ -100,14 +100,7 @@ rts <- rts * rnorm(length(rts), 1, 0.05)
 rts
 ```
 
-* In order to simulate cases by date of infection from a reproduction number trace an estimate of the generation interval is required. We use the current default estimate for Covid-19 from `EpiNow`.
-
-```{r}
-## Use the mean default generation interval for covid
-generation_time_pdf <- rowMeans(EpiNow::covid_generation_times)
-
-generation_time_pdf
-```
+* In order to simulate cases by date of report from a reproduction number trace an estimates the incubation period, reporting delay and generation time are required. Here defaults from `EpiNow` for covid-19 are used.
 
 ```{r}
 incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
@@ -128,6 +121,18 @@ generation_time <- list(mean = EpiNow::covid_generation_times_summary[1, ]$mean,
                         sd_sd = EpiNow::covid_generation_times_summary[1, ]$sd_sd,
                         max = 30)
 
+generation_time_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean, 
+                                               mean_sd = generation_time$mean_sd,
+                                               sd = generation_time$sd,
+                                               sd_sd = generation_time$sd_sd,
+                                               max_value = generation_time$max, samples = 1)
+
+generation_time_pdf <- c(0, EpiNow::dist_skel(n = 0:30, 
+                        model = "gamma", 
+                        params = generation_time_defs$params[[1]],
+                        max_value = 30, 
+                        dist = TRUE, cum = FALSE))
+
 ## Sample a report delay as a lognormal - take 10 samples
 delay_defs <- EpiNow::lognorm_dist_def(mean = reporting_delay$mean, mean_sd = reporting_delay$mean_sd,
                                        sd = reporting_delay$sd, sd_sd = reporting_delay$sd_sd,
@@ -143,11 +148,11 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
-simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10 , initial_date = as.Date("2020-03-01"),
+simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10, initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_time_pdf,
                                           delay_def = delay_defs[10, ],
                                           incubation_def = incubation_defs[10, ],
-                                          reporting_effect = c(1.6, 1, 1, 1, 0.8, 0.4, 1))
+                                          reporting_effect = c(1.6, 1.2, 1, 1, 0.8, 0.4, 1))
 simulated_cases
 ```
     
@@ -160,7 +165,7 @@ simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][
                                      cases := NULL][date >= as.Date("2020-03-11")]
 
 ## Rt prior
-rt_prior <- list(mean = 2.6, sd = 2)
+rt_prior <- list(mean = 1, sd = 1)
 
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
@@ -373,7 +378,8 @@ plot_rt <- ggplot2::ggplot(rt_sim, ggplot2::aes(x = date, col = type, fill = typ
  ggplot2::geom_line(data =  rt_sim[type %in% "Truth"],
                     ggplot2::aes(y = median), size = 1.1, alpha = 0.7) +
  ggplot2::geom_point(data =  rt_sim[type %in% "Truth"],
-                    ggplot2::aes(y = median), size = 1.1, alpha = 1) +
+                    ggplot2::aes(y = median), size = 1.1, alpha = 1, 
+                    show.legend = FALSE) +
   ggplot2::geom_hline(yintercept = 1, linetype = 2) + 
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +

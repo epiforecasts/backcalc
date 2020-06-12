@@ -61,7 +61,7 @@ nowcast <- function(reported_cases, family = "poisson",
   # Add prior for R if missing ---------------------------------
 
   if (missing(rt_prior)) {
-    rt_prior <- list(mean = 1, sd = 2)
+    rt_prior <- list(mean = 1, sd = 1)
   }
   
   # Make sure there are no missing dates and order cases --------------------
