@@ -54,7 +54,7 @@ functions {
   real discretised_gamma_pmf(int y, real mu, real sigma) {
     // calculate alpha and beta for gamma distribution
     real alpha = (mu / sigma)^2;
-    real beta = (sigma^2) / mu;
+    real beta = mu / (sigma^2);
     return((gamma_cdf(y, alpha, beta) - gamma_cdf(y - 1, alpha, beta)));
   }
 }
@@ -93,7 +93,7 @@ transformed data{
   
   // calculate alpha and beta for gamma distribution
   r_alpha = (r_mean / r_sd)^2;
-  r_beta = (r_sd^2) / r_mean;
+  r_beta = r_mean / (r_sd^2);
   
   // precalculate parameters for noise
   initial_noise_mean = log(1);
@@ -178,8 +178,7 @@ transformed parameters {
      }
      // set same day to be 0
      rev_generation_time[max_gt] = 0;
-
-     // infectiousness from infections
+     
      infectiousness = convolve(infections, rev_generation_time, 1);
 
      // Estimate infections using branching process
@@ -200,7 +199,7 @@ transformed parameters {
 
      for (s in 1:t) {
       // add reporting effects (adjust for simplex scale)
-      branch_reports[s] *= day_of_week_eff[day_of_week[s]];
+      branch_reports[s] *= (day_of_week_eff[day_of_week[s]]);
     }
   }
  }
@@ -234,18 +233,18 @@ model {
   //////////////////////////////////////////////////////
   if (estimate_r) {
     
-    // infection overdispersion
+    // // infection overdispersion
     if(model_type) {
       inf_phi ~ exponential(1);
     }
 
     // prior on R
     R ~ gamma(r_alpha, r_beta);
-
+    
     // penalised_prior on generation interval
     target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
     target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * t;
-  
+
     // Likelihood of Rt given infections
     if (model_type) {
       target += neg_binomial_2_lpmf(cases | branch_reports, inf_phi[model_type*estimate_r]);
