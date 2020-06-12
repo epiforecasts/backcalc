@@ -120,7 +120,7 @@ model
 #>   real discretised_gamma_pmf(int y, real mu, real sigma) {
 #>     // calculate alpha and beta for gamma distribution
 #>     real alpha = (mu / sigma)^2;
-#>     real beta = (sigma^2) / mu;
+#>     real beta = mu / (sigma^2);
 #>     return((gamma_cdf(y, alpha, beta) - gamma_cdf(y - 1, alpha, beta)));
 #>   }
 #> }
@@ -159,7 +159,7 @@ model
 #>   
 #>   // calculate alpha and beta for gamma distribution
 #>   r_alpha = (r_mean / r_sd)^2;
-#>   r_beta = (r_sd^2) / r_mean;
+#>   r_beta = r_mean / (r_sd^2);
 #>   
 #>   // precalculate parameters for noise
 #>   initial_noise_mean = log(1);
@@ -244,8 +244,7 @@ model
 #>      }
 #>      // set same day to be 0
 #>      rev_generation_time[max_gt] = 0;
-#> 
-#>      // infectiousness from infections
+#>      
 #>      infectiousness = convolve(infections, rev_generation_time, 1);
 #> 
 #>      // Estimate infections using branching process
@@ -266,7 +265,7 @@ model
 #> 
 #>      for (s in 1:t) {
 #>       // add reporting effects (adjust for simplex scale)
-#>       branch_reports[s] *= day_of_week_eff[day_of_week[s]];
+#>       branch_reports[s] *= (day_of_week_eff[day_of_week[s]]);
 #>     }
 #>   }
 #>  }
@@ -300,18 +299,18 @@ model
 #>   //////////////////////////////////////////////////////
 #>   if (estimate_r) {
 #>     
-#>     // infection overdispersion
+#>     // // infection overdispersion
 #>     if(model_type) {
 #>       inf_phi ~ exponential(1);
 #>     }
 #> 
 #>     // prior on R
 #>     R ~ gamma(r_alpha, r_beta);
-#> 
+#>     
 #>     // penalised_prior on generation interval
 #>     target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
 #>     target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * t;
-#>   
+#> 
 #>     // Likelihood of Rt given infections
 #>     if (model_type) {
 #>       target += neg_binomial_2_lpmf(cases | branch_reports, inf_phi[model_type*estimate_r]);
@@ -343,49 +342,38 @@ model
 
 ``` r
 ## Define an initial rt vector 
-rts <- c(rep(3, 10), rep(2, 20), (2 - 1:15 * 0.1),
+rts <- c(rep(3, 20), rep(2, 20), (2 - 1:15 * 0.1),
          rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
 rts <- rts * rnorm(length(rts), 1, 0.05)
 
 rts
-#>   [1] 3.1460969 2.8612556 3.0194629 2.8936374 2.9754783 2.9860675 2.8475186
-#>   [8] 3.1443652 3.0790010 3.0685667 1.8807375 2.0856486 2.1522862 2.0786989
-#>  [15] 2.0589872 1.9694675 2.0128059 2.1636299 2.1026980 1.8318722 1.9458914
-#>  [22] 2.0167179 1.9465726 2.0710425 2.1898522 1.8847154 1.7232601 1.8466264
-#>  [29] 1.9452620 2.0358369 1.7694621 1.7485661 1.7360814 1.6229108 1.5609831
-#>  [36] 1.2662493 1.3752601 1.1404602 1.1370202 0.9791762 0.9163444 0.8363802
-#>  [43] 0.7407219 0.6455455 0.4426492 0.4753638 0.4930709 0.4723483 0.4535492
-#>  [50] 0.4967908 0.4635872 0.4813488 0.4691019 0.5421520 0.4703191 0.6420092
-#>  [57] 0.7651664 0.7699174 0.8922473 0.9530184 1.0532594 1.0946646 1.2689691
-#>  [64] 1.3143166 1.1501696 1.2933366 1.2566606 1.2159882 1.1640100 1.2561663
-#>  [71] 1.0930519 1.2170910 1.2136984 1.2261509 1.1362896 1.2706734 1.1948043
-#>  [78] 1.1992737 1.2202472 1.2983653 1.2530725 1.1100181 0.9165800 0.9840970
-#>  [85] 1.0561058 1.0203740 1.0118359 0.9566567 1.0377533 1.0475886 0.8898463
-#>  [92] 1.0847265 1.0867679 1.1114486 1.1790264 1.0998271 1.2628199 1.4283066
-#>  [99] 1.4019139 1.4641615 1.3919543 1.5039713
+#>   [1] 2.9655928 3.0019937 2.9746658 2.8639938 2.9999156 2.6655476 3.0209999
+#>   [8] 3.1428167 3.1791464 3.0042459 2.8297009 3.1187978 2.9499833 2.5089731
+#>  [15] 3.0882277 3.2123217 2.8837084 2.9471110 2.9529735 3.0234099 1.8743546
+#>  [22] 2.0693138 1.8124159 2.1063638 2.1098148 2.0126796 1.9456390 1.8712141
+#>  [29] 2.0484874 2.0531264 1.9942172 1.9351006 2.0409229 2.0392762 1.7851940
+#>  [36] 2.0200662 2.0638929 1.9766484 2.0142911 1.9486706 1.9663172 1.7562179
+#>  [43] 1.7637959 1.5384959 1.4507538 1.3060393 1.2543919 1.2159700 1.0946980
+#>  [50] 1.0288821 0.9067997 0.8167381 0.7024511 0.6207926 0.5042546 0.4923934
+#>  [57] 0.4704888 0.5338829 0.4856042 0.5142374 0.4505869 0.5041102 0.5041051
+#>  [64] 0.5252384 0.5290215 0.6336353 0.6688491 0.7395565 0.8769391 1.0027428
+#>  [71] 1.0794997 1.1931938 1.1970341 1.2595865 1.1671187 1.2079074 1.1826149
+#>  [78] 1.2641531 1.3013288 1.2274731 1.1946054 1.1956908 1.2236393 1.2752069
+#>  [85] 1.2058898 1.2702720 1.1140108 1.1126342 1.1553021 1.1470024 1.1061019
+#>  [92] 1.2321599 0.9829231 0.9546949 1.1294737 1.0354145 1.0165780 1.0634274
+#>  [99] 1.0300849 1.0143920 0.9558501 0.9449354 1.0373362 1.0170640 1.1897552
+#> [106] 1.2408000 1.2236269 1.3638254 1.3704927 1.4568836 1.3932579 1.5436210
 ```
 
-  - In order to simulate cases by date of infection from a reproduction
-    number trace an estimate of the generation interval is required. We
-    use the current default estimate for Covid-19 from `EpiNow`.
+  - In order to simulate cases by date of report from a reproduction
+    number trace an estimates the incubation period, reporting delay and
+    generation time are required. Here defaults from `EpiNow` for
+    covid-19 are
+used.
 
 <!-- end list -->
-
-``` r
-## Use the mean default generation interval for covid
-generation_time_pdf <- rowMeans(EpiNow::covid_generation_times)
-
-generation_time_pdf
-#>  [1] 0.000000e+00 2.063055e-01 1.887694e-01 1.602335e-01 1.240479e-01
-#>  [6] 9.071765e-02 6.487144e-02 4.603137e-02 3.269885e-02 2.340093e-02
-#> [11] 1.673225e-02 1.204701e-02 8.778529e-03 6.435373e-03 4.739174e-03
-#> [16] 3.587893e-03 2.700888e-03 2.063697e-03 1.558217e-03 1.195100e-03
-#> [21] 9.091163e-04 6.717316e-04 5.056617e-04 3.622574e-04 2.497779e-04
-#> [26] 1.576857e-04 1.031422e-04 6.222018e-05 3.392786e-05 1.669864e-05
-#> [31] 7.260972e-06 3.493567e-06 1.600534e-06 6.507847e-07 1.398601e-07
-```
 
 ``` r
 incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
@@ -406,6 +394,18 @@ generation_time <- list(mean = EpiNow::covid_generation_times_summary[1, ]$mean,
                         sd_sd = EpiNow::covid_generation_times_summary[1, ]$sd_sd,
                         max = 30)
 
+generation_time_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean, 
+                                               mean_sd = generation_time$mean_sd,
+                                               sd = generation_time$sd,
+                                               sd_sd = generation_time$sd_sd,
+                                               max_value = generation_time$max, samples = 1)
+
+generation_time_pdf <- c(0, EpiNow::dist_skel(n = 0:30, 
+                        model = "gamma", 
+                        params = generation_time_defs$params[[1]],
+                        max_value = 30, 
+                        dist = TRUE, cum = FALSE))
+
 ## Sample a report delay as a lognormal - take 10 samples
 delay_defs <- EpiNow::lognorm_dist_def(mean = reporting_delay$mean, mean_sd = reporting_delay$mean_sd,
                                        sd = reporting_delay$sd, sd_sd = reporting_delay$sd_sd,
@@ -421,38 +421,24 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
-simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10 , initial_date = as.Date("2020-03-01"),
+simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10, initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_time_pdf,
                                           delay_def = delay_defs[10, ],
                                           incubation_def = incubation_defs[10, ],
-                                          reporting_effect = c(1.6, 1, 1, 1, 0.8, 0.4, 1))
-#> New names:
-#> * NA -> ...1
-#> * NA -> ...2
-#> * NA -> ...3
-#> * NA -> ...4
-#> * NA -> ...5
-#> * ...
-#> New names:
-#> * NA -> ...1
-#> * NA -> ...2
-#> * NA -> ...3
-#> * NA -> ...4
-#> * NA -> ...5
-#> * ...
+                                          reporting_effect = c(1.6, 1.2, 1, 1, 0.8, 0.4, 1))
 simulated_cases
 #>            date cases reference
-#>   1: 2020-03-02     6 infection
-#>   2: 2020-03-03    10 infection
-#>   3: 2020-03-04    21 infection
-#>   4: 2020-03-05    30 infection
-#>   5: 2020-03-06    30 infection
+#>   1: 2020-03-02    10 infection
+#>   2: 2020-03-03     8 infection
+#>   3: 2020-03-04    15 infection
+#>   4: 2020-03-05    27 infection
+#>   5: 2020-03-06    23 infection
 #>  ---                           
-#> 294: 2020-06-06  2803    report
-#> 295: 2020-06-07  7193    report
-#> 296: 2020-06-08 11964    report
-#> 297: 2020-06-09  8017    report
-#> 298: 2020-06-10  8459    report
+#> 322: 2020-06-16   104    report
+#> 323: 2020-06-17    96    report
+#> 324: 2020-06-18    80    report
+#> 325: 2020-06-19    67    report
+#> 326: 2020-06-20    36    report
 ```
 
 ### Compare approaches on simulated data
@@ -463,7 +449,7 @@ simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][
                                      cases := NULL][date >= as.Date("2020-03-11")]
 
 ## Rt prior
-rt_prior <- list(mean = 2.6, sd = 2)
+rt_prior <- list(mean = 1, sd = 1)
 
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
@@ -567,14 +553,14 @@ names(results) <- countries
 
 ``` r
 non_parametric_cases$day_of_week[, as.list(summary(value)), by = "wday"]
-#>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.      Max.
-#> 1:    Monday 1.4565338 1.5884298 1.6186075 1.6183323 1.647633 1.7828961
-#> 2:   Tuesday 0.9261662 1.0174090 1.0395496 1.0397425 1.061607 1.1677693
-#> 3: Wednesday 0.9012929 1.0267510 1.0492523 1.0500419 1.072655 1.1916744
-#> 4:  Thursday 0.9151779 1.0142065 1.0374646 1.0379002 1.061351 1.1595745
-#> 5:    Friday 0.7178873 0.8028705 0.8210583 0.8215865 0.839841 0.9090513
-#> 6:  Saturday 0.3637432 0.4030470 0.4129132 0.4131057 0.422865 0.4704760
-#> 7:    Sunday 0.9097898 0.9970890 1.0184972 1.0192909 1.040427 1.1305950
+#>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.      Max.
+#> 1:    Monday 1.4106325 1.5404048 1.5727338 1.5732640 1.6054227 1.7693378
+#> 2:   Tuesday 1.0615901 1.1580487 1.1856111 1.1861601 1.2140674 1.3445997
+#> 3: Wednesday 0.9196753 1.0065081 1.0304331 1.0319396 1.0564268 1.1719308
+#> 4:  Thursday 0.8850249 0.9918310 1.0150483 1.0155433 1.0389392 1.1543418
+#> 5:    Friday 0.6957200 0.7764888 0.7959744 0.7963572 0.8158948 0.9065269
+#> 6:  Saturday 0.3434297 0.3861837 0.3961746 0.3964193 0.4068626 0.4536621
+#> 7:    Sunday 0.8891648 0.9757418 1.0001142 1.0003165 1.0233958 1.1267089
 ```
 
   - Recover reporting delays
@@ -586,9 +572,9 @@ data.table::rbindlist(list(
   non_parametric_cases$rep_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
   non_parametric_cases$rep_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
-#>    parameter      mean          sd
-#> 1:      mean 1.6095646 0.009484075
-#> 2:        sd 0.6856638 0.018090346
+#>    parameter     mean          sd
+#> 1:      mean 1.599166 0.009077958
+#> 2:        sd 0.619796 0.014931425
 ```
 
   - Recover incubation period
@@ -600,9 +586,9 @@ data.table::rbindlist(list(
   non_parametric_cases$inc_mean[, .(parameter = "mean", mean = mean(value), sd = sd(value))],
   non_parametric_cases$inc_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
-#>    parameter      mean          sd
-#> 1:      mean 1.6213547 0.006086459
-#> 2:        sd 0.4170474 0.006875109
+#>    parameter     mean          sd
+#> 1:      mean 1.618891 0.006036793
+#> 2:        sd 0.413511 0.006430514
 ```
 
   - Recover generation time
@@ -615,8 +601,8 @@ data.table::rbindlist(list(
   non_parametric_cases$gt_sd[, .(parameter = "sd", mean = mean(value), sd = sd(value))]
 ))
 #>    parameter     mean         sd
-#> 1:      mean 3.632303 0.06957216
-#> 2:        sd 3.079681 0.07713413
+#> 1:      mean 3.576495 0.06779757
+#> 2:        sd 3.086587 0.07204822
 ```
 
   - Prepare data for
@@ -733,7 +719,8 @@ plot_rt <- ggplot2::ggplot(rt_sim, ggplot2::aes(x = date, col = type, fill = typ
  ggplot2::geom_line(data =  rt_sim[type %in% "Truth"],
                     ggplot2::aes(y = median), size = 1.1, alpha = 0.7) +
  ggplot2::geom_point(data =  rt_sim[type %in% "Truth"],
-                    ggplot2::aes(y = median), size = 1.1, alpha = 1) +
+                    ggplot2::aes(y = median), size = 1.1, alpha = 1, 
+                    show.legend = FALSE) +
   ggplot2::geom_hline(yintercept = 1, linetype = 2) + 
   cowplot::theme_cowplot() +
   ggplot2::theme(legend.position = "bottom") +
@@ -746,7 +733,7 @@ plot_obs +
   patchwork::plot_layout(ncol = 1)
 ```
 
-<img src="figures/unnamed-chunk-15-1.png" style="display: block; margin: auto;" />
+<img src="figures/unnamed-chunk-14-1.png" style="display: block; margin: auto;" />
 
 ### Reported Covid-19 cases in the United Kingdom, United States of America and South Korea
 
@@ -759,43 +746,43 @@ country
 purrr::map(results, ~ .[[2]]$day_of_week[, as.list(summary(value)), by = "wday"])
 #> $Austria
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.4774216 0.6579889 0.7140269 0.7189061 0.7729144 1.155089
-#> 2:   Tuesday 0.6282193 0.8912000 0.9624744 0.9674579 1.0362005 1.451050
-#> 3: Wednesday 0.6480663 0.9515552 1.0238185 1.0312478 1.1032810 1.564399
-#> 4:  Thursday 0.6176471 0.8868455 0.9569272 0.9635707 1.0325074 1.553738
-#> 5:    Friday 0.6713272 1.0067775 1.0854282 1.0934531 1.1713699 1.651447
-#> 6:  Saturday 0.8253638 1.1419120 1.2261915 1.2327341 1.3168959 1.806118
-#> 7:    Sunday 0.6451032 0.9151970 0.9864882 0.9926302 1.0630113 1.517241
+#> 1:    Monday 0.4329010 0.6604434 0.7146224 0.7195857 0.7737215 1.092501
+#> 2:   Tuesday 0.6234246 0.8926110 0.9603595 0.9664345 1.0351244 1.437663
+#> 3: Wednesday 0.6977456 0.9511917 1.0251291 1.0306139 1.1023826 1.493126
+#> 4:  Thursday 0.5978230 0.8883876 0.9572164 0.9634779 1.0322259 1.442533
+#> 5:    Friday 0.7297688 1.0106017 1.0859315 1.0939478 1.1706693 1.683269
+#> 6:  Saturday 0.8223715 1.1454527 1.2276530 1.2345541 1.3179303 1.826841
+#> 7:    Sunday 0.6620698 0.9142094 0.9850595 0.9913860 1.0600027 1.454302
 #> 
 #> $`United Kingdom`
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.7229855 0.9853368 1.0628537 1.0696822 1.1453073 1.619689
-#> 2:   Tuesday 0.5182143 0.7573495 0.8178942 0.8246102 0.8852931 1.321948
-#> 3: Wednesday 0.6203192 0.8468508 0.9124948 0.9174780 0.9822064 1.380598
-#> 4:  Thursday 0.6100890 0.8766748 0.9493264 0.9557555 1.0266550 1.558029
-#> 5:    Friday 0.6874568 0.9537640 1.0281537 1.0365381 1.1130466 1.564139
-#> 6:  Saturday 0.6715255 0.9906976 1.0643105 1.0707683 1.1425927 1.617596
-#> 7:    Sunday 0.7060628 1.0391813 1.1192608 1.1251676 1.2023453 1.605909
+#> 1:    Monday 0.7232434 0.9891680 1.0629991 1.0705428 1.1457245 1.622328
+#> 2:   Tuesday 0.5152092 0.7565960 0.8186586 0.8250316 0.8859004 1.330905
+#> 3: Wednesday 0.5826992 0.8433564 0.9108817 0.9178452 0.9839764 1.396139
+#> 4:  Thursday 0.5988971 0.8803655 0.9491386 0.9558514 1.0255168 1.483778
+#> 5:    Friday 0.6446249 0.9533992 1.0301342 1.0363546 1.1114972 1.715666
+#> 6:  Saturday 0.6492204 0.9872899 1.0631640 1.0700123 1.1437177 1.666668
+#> 7:    Sunday 0.7162519 1.0402052 1.1171943 1.1243622 1.2023631 1.732189
 #> 
 #> $`United States of America`
 #>         wday      Min.   1st Qu.    Median      Mean   3rd Qu.     Max.
-#> 1:    Monday 0.7163886 0.8660917 0.9023038 0.9044124 0.9414620 1.175174
-#> 2:   Tuesday 0.7441995 0.9046967 0.9427356 0.9453637 0.9835409 1.205832
-#> 3: Wednesday 0.7263308 0.8849820 0.9218113 0.9234003 0.9594443 1.172953
-#> 4:  Thursday 0.6722385 0.9111724 0.9512175 0.9525458 0.9923207 1.228356
-#> 5:    Friday 0.8113689 1.0206017 1.0646597 1.0659745 1.1084381 1.373993
-#> 6:  Saturday 0.9254894 1.0992397 1.1467106 1.1487946 1.1954568 1.449913
-#> 7:    Sunday 0.8188619 1.0172489 1.0575275 1.0595086 1.1010419 1.391618
+#> 1:    Monday 0.7068123 0.8655889 0.9030481 0.9047587 0.9420651 1.141740
+#> 2:   Tuesday 0.7347589 0.9026308 0.9408711 0.9434522 0.9820212 1.200685
+#> 3: Wednesday 0.6975492 0.8846123 0.9228791 0.9242075 0.9619230 1.146373
+#> 4:  Thursday 0.7628608 0.9112604 0.9502453 0.9525272 0.9927470 1.196609
+#> 5:    Friday 0.8178304 1.0210800 1.0651290 1.0669370 1.1105430 1.329498
+#> 6:  Saturday 0.9313811 1.1001870 1.1461777 1.1489734 1.1946653 1.442318
+#> 7:    Sunday 0.8392114 1.0155947 1.0575069 1.0591440 1.1012395 1.342190
 #> 
 #> $Russia
 #>         wday      Min.   1st Qu.    Median      Mean  3rd Qu.     Max.
-#> 1:    Monday 0.6882923 0.9388064 0.9978289 1.0018121 1.060409 1.407897
-#> 2:   Tuesday 0.6615181 0.8949305 0.9547091 0.9593201 1.018444 1.395138
-#> 3: Wednesday 0.6577893 0.8865924 0.9444270 0.9471133 1.003945 1.280872
-#> 4:  Thursday 0.6680313 0.9624959 1.0261921 1.0313905 1.093670 1.506125
-#> 5:    Friday 0.6622469 0.9476987 1.0092350 1.0128857 1.074218 1.495751
-#> 6:  Saturday 0.7834295 1.0215515 1.0848102 1.0927580 1.157788 1.689260
-#> 7:    Sunday 0.6999091 0.8919312 0.9507825 0.9547202 1.014044 1.330141
+#> 1:    Monday 0.7024516 0.9367885 0.9964267 1.0013767 1.061886 1.428718
+#> 2:   Tuesday 0.6415042 0.8979964 0.9549479 0.9595746 1.016502 1.377973
+#> 3: Wednesday 0.6040636 0.8842443 0.9436143 0.9475866 1.007571 1.428438
+#> 4:  Thursday 0.6787249 0.9608399 1.0252126 1.0301693 1.094453 1.657436
+#> 5:    Friday 0.6749061 0.9479047 1.0108225 1.0149339 1.075104 1.427203
+#> 6:  Saturday 0.7653992 1.0184649 1.0847910 1.0915509 1.156567 1.578130
+#> 7:    Sunday 0.6574571 0.8926562 0.9501155 0.9548081 1.012144 1.452136
 ```
 
   - Prepare data for
@@ -837,7 +824,7 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
 plot
 ```
 
-<img src="figures/unnamed-chunk-18-1.png" style="display: block; margin: auto;" />
+<img src="figures/unnamed-chunk-17-1.png" style="display: block; margin: auto;" />
 
 ## Discussion
 
