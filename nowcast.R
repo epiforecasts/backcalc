@@ -52,7 +52,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     prior_smoothing_window = 7,
                     model, cores = 1, chains = 2,
                     samples = 1000, warmup = 1000,
-                    estimate_rt = FALSE, adapt_delta = 0.95,
+                    estimate_rt = FALSE, adapt_delta = 0.96,
                     max_treedepth = 15, return_all = FALSE,
                     verbose = FALSE){
   
@@ -98,7 +98,7 @@ nowcast <- function(reported_cases, family = "poisson",
   
   shifted_reported_cases <- data.table::copy(reported_cases)[,
                           confirm := data.table::shift(confirm, n = as.integer(mean_shift),
-                          type = "lead", fill = data.table::last(confirm))][,
+                          type = "lead", fill = mean(data.table::last(confirm, n = 7)))][,
                           confirm := data.table::frollmean(confirm, n = prior_smoothing_window, 
                                                            align = "right", fill = data.table::last(confirm))][,
                           confirm := data.table::fifelse(confirm == 0, 1e-4, confirm)]
@@ -149,8 +149,7 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){out <- list(
-                            initial_noise = truncnorm::rtruncnorm(1, a = 0, mean = 1, sd = 0.4),
-                            noise_diff = truncnorm::rtruncnorm(data$t - 1, a = 0, mean = 1, sd = 0.1),
+                            eta = rnorm(data$t, mean = 0, sd = 0.1),
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
@@ -161,12 +160,17 @@ init_fun <- function(){out <- list(
                         }
 
                         if (estimate_rt) {
-                        out$R <- rgamma(n = data$t, shape = (rt_prior$mean / rt_prior$sd)^2, 
-                                                    scale = (rt_prior$sd^2) / rt_prior$mean)
+                        out$R <- array(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
+                                                    scale = (rt_prior$sd^2) / rt_prior$mean))
+                        out$R_eta <- rnorm(data$t, mean = 0, sd = 1)
                         out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
                                                             sd = generation_time$sd_sd))
+                        
+                          if (data$model_type == 1) {
+                            out$inf_phi <- array(rexp(1, 1))
+                          }
                         }
 
                 return(out)

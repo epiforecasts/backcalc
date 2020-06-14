@@ -67,17 +67,15 @@ run_countries <- TRUE
 
 ### Model
 
-* Overview: non-parameteric backcalculation assuming a median shift with independent gaussian noise.
+* Overview: non-parameteric backcalculation assuming a mean shift with gaussian noise.
 
-* Orginal implementation here: https://github.com/jhellewell14/rtconfirm/blob/master/R/backcalc.R
+* This implementation uses mean shifted reported cases (smoothed using a 7 da, backwards looking, rolling average) as a prior combined with a guassian process. For future cases (i.e with no data to shift to into the last reported case count is used).
 
-* This implementation uses median shifted reported cases (smoothed using a rolling average over the width of the median generation interval) as a prior and then fits independent gaussian noise on top of this. For future cases (i.e with no data to shift to into the last reported case count is used).
-
-* Daily reporting effects are included and constrained by weekly cases.
+* Fixed daily reporting effects are adjusted for.
 
 * Uncertainty in reporting delays and incubation periods is enforced by upweighting the prior for these parameters.
 
-* We implement an in model time-varying reproduction number estimation step based on the renewal equation and the imputed infections. 
+* We implement an in model time-varying reproduction number estimation step based on the renewal equation, the imputed infections and a gaussian process. 
 
 ```{r}
 model
@@ -159,13 +157,13 @@ simulated_cases
   
 ###  Compare approaches on simulated data
 
-```{r, message = FALSE}
+```{r}
 ## Extract simulated infections
 simulated_reports <- simulated_cases[reference == "report"][, confirm := cases][,
                                      cases := NULL][date >= as.Date("2020-03-11")]
 
 ## Rt prior
-rt_prior <- list(mean = 1, sd = 1)
+rt_prior <- list(mean = 2.6, sd = 2)
 
 ## Reconstruction via backwards sampling
 sampling_cases <- nowcast_pipeline(reported_cases = simulated_reports[, import_status := "local"], 
@@ -180,7 +178,7 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_time = generation_time, 
-                                estimate_rt = FALSE,
+                                estimate_rt = TRUE,
                                 rt_prior = rt_prior,
                                 cores = 4, chains = 4,
                                 samples = 1000, warmup = 1000,
@@ -388,7 +386,7 @@ plot_rt <- ggplot2::ggplot(rt_sim, ggplot2::aes(x = date, col = type, fill = typ
 
 plot_obs + 
   plot + 
- ## plot_rt +
+  plot_rt +
   patchwork::plot_layout(ncol = 1)
 ```
 
