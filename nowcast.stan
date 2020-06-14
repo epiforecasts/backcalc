@@ -203,7 +203,6 @@ transformed parameters {
      
      infectiousness = convolve(infections, rev_generation_time, 1);
 
-
      // Construct R over time
         K = cov_exp_quad(time, R_alpha, R_rho);
      // diagonal elements with offset to make + definite
