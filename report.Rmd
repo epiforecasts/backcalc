@@ -181,7 +181,7 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 estimate_rt = TRUE,
                                 rt_prior = rt_prior,
                                 cores = 4, chains = 4,
-                                samples = 1000, warmup = 1000,
+                                samples = 500, warmup = 500,
                                 return_all = TRUE, model = model,
                                 verbose = TRUE)
 ```

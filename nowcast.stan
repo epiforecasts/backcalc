@@ -47,7 +47,7 @@ functions {
   
   // discretised lognormal pmf
   real discretised_lognormal_pmf(int y, real mu, real sigma) {
-    return((lognormal_cdf(y, mu, sigma) - lognormal_cdf(y - 1, mu, sigma)));
+    return(normal_cdf((log(y + 1) - mu) / sigma, 0.0, 1.0) - normal_cdf((log(y) - mu) / sigma, 0.0, 1.0));
   }
   
   // discretised gamma pmf
