@@ -89,7 +89,7 @@ model
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(3, 20), rep(2, 20), (2 - 1:15 * 0.1),
+rts <- c(rep(2.5, 20), rep(2, 20), (2 - 1:15 * 0.1),
          rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
@@ -178,10 +178,10 @@ non_parametric_cases <- nowcast(simulated_reports,
                                 incubation_period = incubation_period,
                                 reporting_delay = reporting_delay,
                                 generation_time = generation_time, 
-                                estimate_rt = FALSE,
+                                estimate_rt = TRUE,
                                 rt_prior = rt_prior,
                                 cores = 4, chains = 4,
-                                samples = 500, warmup = 500,
+                                samples = 1000, warmup = 500,
                                 return_all = TRUE, model = model,
                                 verbose = TRUE)
 ```
@@ -223,9 +223,9 @@ results <- lapply(countries,
                                         reporting_delay = reporting_delay,
                                         generation_time = generation_time, 
                                         estimate_rt = FALSE,
-                                        samples = 2000, warmup = 1000,
+                                        samples = 1000, warmup = 500,
                                         cores = 4, chains = 4,
-                                        return_all = TRUE, model = model)
+                                        return_all = TRUE, model = model, verbose = TRUE)
         
         return(list(sampling_cases, non_parametric_cases))
                                        })

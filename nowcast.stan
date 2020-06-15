@@ -272,9 +272,9 @@ model {
     initial_R[estimate_r] ~ gamma(r_alpha, r_beta);
     
    // priors for R gp
-   R_rho ~ lognormal(1.098612, 0.5); //log(3)
+   R_rho[estimate_r] ~ lognormal(1.098612, 0.5); //log(3)
    R_alpha[estimate_r] ~ std_normal();
-   R_eta[estimate_r] ~ std_normal();
+   R_eta ~ std_normal();
     
     // penalised_prior on generation interval
     target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
