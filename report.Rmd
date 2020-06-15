@@ -222,7 +222,7 @@ results <- lapply(countries,
                                         incubation_period = incubation_period,
                                         reporting_delay = reporting_delay,
                                         generation_time = generation_time, 
-                                        estimate_rt = FALSE,
+                                        estimate_rt = TRUE,
                                         samples = 1000, warmup = 500,
                                         cores = 4, chains = 4,
                                         return_all = TRUE, model = model, verbose = TRUE)
