@@ -115,13 +115,11 @@ parameters{
   real <lower = 0> gt_sd[estimate_r];                 // sd of generation time
   real<lower=0> rho;
   real<lower=0> alpha;
-  real<lower=0> sigma;
   vector[t] eta;
-  real<lower = 0> inf_phi[model_type*estimate_r];     // overdispersion of the infection process
-  real<lower=0> R_rho;
-  real<lower=0> R_alpha;
-  real<lower=0> R_sigma;
-  vector[t] R_eta;
+  real<lower=0> inf_phi[model_type*estimate_r];     // overdispersion of the infection process
+  real<lower=0> R_rho[estimate_r];
+  real<lower=0> R_alpha[estimate_r];
+  vector[estimate_r > 0 ? t : 0] R_eta;
 }
 
 transformed parameters {
@@ -170,11 +168,11 @@ transformed parameters {
   noise = exp(L_K * eta);
   
   for (s in 1:t) {
-    if (noise[s] == 0) {
+    if(noise[s] == 0) {
       noise[s] = 0.0001;
     }
   }
-  
+
   // generate infections from prior infections and non-parameteric noise
   infections = shifted_cases .* noise;
   
@@ -204,13 +202,13 @@ transformed parameters {
      infectiousness = convolve(infections, rev_generation_time, 1);
 
      // Construct R over time
-        K = cov_exp_quad(time, R_alpha, R_rho);
+      K = cov_exp_quad(time, R_alpha[estimate_r], R_rho[estimate_r]);
      // diagonal elements with offset to make + definite
       for (n in 1:t) {
         K[n, n] = K[n, n] + delta;
         }
-        L_K = cholesky_decompose(K);
-        R_noise = exp(L_K * R_eta);
+      L_K = cholesky_decompose(K);
+      R_noise = exp(L_K * R_eta);
   
      // Estimate infections using branching process
       for (s in 1:t) {
@@ -239,9 +237,8 @@ transformed parameters {
 model {
   
   // priors for noise GP
-  rho ~ inv_gamma(5, 5);
+  rho ~ lognormal(1.098612, 0.5); //log(3)
   alpha ~ std_normal();
-  sigma ~ std_normal();
   eta ~ std_normal();
 
   // reporting overdispersion
@@ -275,10 +272,9 @@ model {
     initial_R[estimate_r] ~ gamma(r_alpha, r_beta);
     
    // priors for R gp
-   R_rho ~ inv_gamma(5, 5);
-   R_alpha ~ std_normal();
-   R_sigma ~ std_normal();
-   R_eta ~ std_normal();
+   R_rho ~ lognormal(1.098612, 0.5); //log(3)
+   R_alpha[estimate_r] ~ std_normal();
+   R_eta[estimate_r] ~ std_normal();
     
     // penalised_prior on generation interval
     target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;

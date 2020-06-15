@@ -52,7 +52,7 @@ nowcast <- function(reported_cases, family = "poisson",
                     prior_smoothing_window = 7,
                     model, cores = 1, chains = 2,
                     samples = 1000, warmup = 1000,
-                    estimate_rt = FALSE, adapt_delta = 0.96,
+                    estimate_rt = FALSE, adapt_delta = 0.95,
                     max_treedepth = 15, return_all = FALSE,
                     verbose = FALSE){
   
@@ -149,7 +149,7 @@ nowcast <- function(reported_cases, family = "poisson",
 # Set up initial conditions fn --------------------------------------------
 
 init_fun <- function(){out <- list(
-                            eta = rnorm(data$t, mean = 0, sd = 0.1),
+                            eta = rnorm(data$t, mean = 0, sd = 1),
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
