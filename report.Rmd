@@ -119,7 +119,7 @@ generation_time <- list(mean = EpiNow::covid_generation_times_summary[1, ]$mean,
                         sd_sd = EpiNow::covid_generation_times_summary[1, ]$sd_sd,
                         max = 30)
 
-generation_time_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean, 
+generation_time_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean - 1, 
                                                mean_sd = generation_time$mean_sd,
                                                sd = generation_time$sd,
                                                sd_sd = generation_time$sd_sd,
@@ -465,6 +465,7 @@ plot_rt_countries
 ```{r}
 ggsave("figures/rt_plot.png", plot_rt_countries, dpi = 400, width = 12, height = 12)
 ```
+
 ## Discussion
 
 ## References

@@ -121,7 +121,7 @@ parameters{
   real <lower = 0> rep_sd;                            // sd of incubation period
   real<lower = 0> rep_phi[model_type];                // overdispersion of the reporting process
   vector<lower = 0>[estimate_r] initial_R;        // reproduction number over time
-  real<lower = 0> gt_mean[estimate_r];                // mean of generation time
+  real<lower = 1> gt_mean[estimate_r];                // mean of generation time
   real <lower = 0> gt_sd[estimate_r];                 // sd of generation time
   real<lower=0> rho;
   real<lower=0> alpha;
