@@ -431,6 +431,40 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
 plot
 ```
 
+* Prepare R estimates for plotting
+
+```{r}
+country_r <- purrr::map2(results, names(results), ~ .x[[2]]$R[,
+                  .(median = median(value), bottom = quantile(value, 0.025),
+                    lower = quantile(value, 0.25), upper = quantile(value, 0.75),
+                    top = quantile(value, 0.975), type = "Estimated"), by = c("date")][,region := .y])
+
+country_r <- data.table::rbindlist(country_r)[date >= as.Date("2020-03-01")]
+```
+
+* Plot R estimates (**note that the reporting delays are not based on data and so these results are for model checking only**).
+
+```{r, fig.width = 12, fig.height = 9, dpi = 400, message = FALSE, warning = FALSE}
+plot_rt_countries <- 
+  ggplot2::ggplot(country_r , ggplot2::aes(x = date, col = region, fill = region)) +
+   ggplot2::geom_linerange(ggplot2::aes(ymin = bottom, ymax = top), 
+                         alpha = 0.4, size = 1.2) +
+ ggplot2::geom_linerange(ggplot2::aes(ymin = lower, ymax = upper), 
+                         alpha = 0.8, size = 1.2) +
+  ggplot2::geom_hline(yintercept = 1, linetype = 2) + 
+  cowplot::theme_cowplot() +
+  ggplot2::theme(legend.position = "bottom") +
+  ggplot2::scale_color_brewer(palette = "Dark2") +
+  ggplot2::labs(y = "Rt", x = "Date", col = "Type") +
+  facet_wrap(~ region) +
+  ggplot2::theme(legend.position = "none")
+
+plot_rt_countries
+```
+
+```{r}
+ggsave("figures/rt_plot.png", plot_rt_countries, dpi = 400, width = 12, height = 12)
+```
 ## Discussion
 
 ## References

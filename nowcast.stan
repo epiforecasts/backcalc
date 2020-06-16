@@ -51,11 +51,21 @@ functions {
   }
   
   // discretised gamma pmf
+  // Based on EpiEstim approach (https://github.com/mrc-ide/EpiEstim/blob/master/R/discr_si.R)
   real discretised_gamma_pmf(int y, real mu, real sigma) {
     // calculate alpha and beta for gamma distribution
-    real alpha = (mu / sigma)^2;
-    real beta = mu / (sigma^2);
-    return((gamma_cdf(y, alpha, beta) - gamma_cdf(y - 1, alpha, beta)));
+    real alpha = ((mu - 1) / sigma)^2;
+    real beta = (mu - 1)/ (sigma^2);
+    
+    real pmf = y * gamma_cdf(y, alpha, beta) + (y - 2) * gamma_cdf(min(0, y - 2), alpha, beta) -
+      2 * (y - 1) * gamma_cdf(min(0, y - 1), alpha, beta);
+    
+    pmf += alpha / beta * (2 * gamma_cdf(min(y - 1, 0), alpha + 1, beta) - gamma_cdf(min(y - 2, 0), alpha + 1, beta) -
+    gamma_cdf(y, alpha + 1, beta));
+    
+    pmf = pmf < 0 ? 0 : pmf;
+    
+    return(pmf);
   }
 }
 
@@ -192,12 +202,10 @@ transformed parameters {
   //////////////////////////////////////////////////////
   if (estimate_r) {
     // calculate pdf of generation time from distribution
-    for (j in 1:(max_gt - 1)) {
+    for (j in 1:(max_gt)) {
        rev_generation_time[j] =
            discretised_gamma_pmf(max_gt - j, gt_mean[estimate_r], gt_sd[estimate_r]);
      }
-     // set same day to be 0
-     rev_generation_time[max_gt] = 0;
      
      infectiousness = convolve(infections, rev_generation_time, 1);
 
@@ -272,8 +280,8 @@ model {
     initial_R[estimate_r] ~ gamma(r_alpha, r_beta);
     
    // priors for R gp
-   R_rho[estimate_r] ~ lognormal(1.098612, 0.5); //log(3)
-   R_alpha[estimate_r] ~ std_normal();
+   R_rho ~ lognormal(1.098612, 0.5); //log(3)
+   R_alpha ~ std_normal();
    R_eta ~ std_normal();
     
     // penalised_prior on generation interval

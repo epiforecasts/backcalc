@@ -150,6 +150,8 @@ nowcast <- function(reported_cases, family = "poisson",
 
 init_fun <- function(){out <- list(
                             eta = rnorm(data$t, mean = 0, sd = 1),
+                            rho = rlnorm(1, 1.098612, 0.5),
+                            alpha =  truncnorm::rtruncnorm(1, a = 0, mean = 0, sd = 1),
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
@@ -163,6 +165,8 @@ init_fun <- function(){out <- list(
                         out$R <- array(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
                                                     scale = (rt_prior$sd^2) / rt_prior$mean))
                         out$R_eta <- rnorm(data$t, mean = 0, sd = 1)
+                        out$R_rho <- array(rlnorm(1, 1.098612, 0.5))
+                        out$R_alpha <-  array(truncnorm::rtruncnorm(1, a = 0, mean = 0, sd = 1))
                         out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
