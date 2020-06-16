@@ -167,7 +167,7 @@ init_fun <- function(){out <- list(
                         out$R_eta <- rnorm(data$t, mean = 0, sd = 1)
                         out$R_rho <- array(rlnorm(1, 1.098612, 0.5))
                         out$R_alpha <-  array(truncnorm::rtruncnorm(1, a = 0, mean = 0, sd = 1))
-                        out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
+                        out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 1, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
                                                             sd = generation_time$sd_sd))

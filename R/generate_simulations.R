@@ -6,7 +6,7 @@ generate_simulations <- function(rts, initial_cases,
   
 
   ## Generation time
-  generation_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean - 1,
+  generation_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean,
                                             mean_sd = generation_time$mean_sd,
                                             sd = generation_time$sd,
                                             sd_sd = generation_time$sd_sd,
