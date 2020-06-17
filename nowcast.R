@@ -242,6 +242,10 @@ init_fun <- function(){out <- list(
       out$R <- extract_parameter("R", 
                                  samples,
                                  reported_cases$date[-(1:mean_shift)])
+      
+      out$growth_rate <- extract_parameter("r", 
+                                          samples,
+                                          reported_cases$date[-(1:mean_shift)])
     }
 
     

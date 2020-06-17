@@ -308,7 +308,16 @@ model {
   
 generated quantities {
   int imputed_infections[t];
+  real r[estimate_r > 0 ? rt : 0];
   
   // simulated infections - assume poisson (with negative binomial reporting)
   imputed_infections = poisson_rng(infections);
+  
+  // estimate the growth rate
+  if (estimate_r) {
+      real k = pow(gt_sd[estimate_r] / gt_mean[estimate_r], 2);
+      for (s in 1:rt) {
+        r[s] = (pow(R[s], k) - 1) / (k * gt_mean[estimate_r]);
+      } 
+  }
 }
