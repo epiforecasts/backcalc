@@ -22,7 +22,7 @@ generate_simulations <- function(rts, initial_cases,
                         ...))
     }
     
-    dist_pdf <- sample_fn(0:max_value, dist = TRUE, cum = FALSE)
+    dist_pdf <- sample_fn(0:(max_value - 1), dist = TRUE, cum = FALSE)
     
     return(dist_pdf)
   }

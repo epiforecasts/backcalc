@@ -89,7 +89,7 @@ model
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(2.5, 20), rep(2, 20), (2 - 1:15 * 0.1),
+rts <- c(rep(2.5, 10), rep(2, 10), (2 - 1:15 * 0.1),
          rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
@@ -108,7 +108,7 @@ incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
                            max = 30)
                     
 reporting_delay <- list(mean = log(5),
-                         mean_sd = log(1.1),
+                         mean_sd = log(2),
                          sd = log(2),
                          sd_sd = log(1.2),
                          max = 30)
@@ -125,7 +125,7 @@ generation_time_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean,
                                                sd_sd = generation_time$sd_sd,
                                                max_value = generation_time$max, samples = 1)
 
-generation_time_pdf <- c(0, EpiNow::dist_skel(n = 0:30, 
+generation_time_pdf <- c(0, EpiNow::dist_skel(n = 0:29, 
                         model = "gamma", 
                         params = generation_time_defs$params[[1]],
                         max_value = 30, 
@@ -319,7 +319,7 @@ rt_sim <- non_parametric_cases$R[, .(median = median(value), bottom = quantile(v
 rts <- data.table::data.table(
     date = seq(as.Date("2020-03-01"), 
                as.Date("2020-03-01") + lubridate::days(length(rts) - 1), by = "days"),
-    median = rts,
+    median = rts, 
     type = "Truth"
   )
 
@@ -462,9 +462,6 @@ plot_rt_countries <-
 plot_rt_countries
 ```
 
-```{r}
-ggsave("figures/rt_plot.png", plot_rt_countries, dpi = 400, width = 12, height = 12)
-```
 
 ## Discussion
 
