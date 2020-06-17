@@ -89,7 +89,7 @@ model
 
 ```{r}
 ## Define an initial rt vector 
-rts <- c(rep(2.5, 20), rep(2, 20), (2 - 1:15 * 0.1),
+rts <- c(rep(2.5, 10), rep(2, 10), (2 - 1:15 * 0.1),
          rep(0.5, 10), (0.5 + 1:7 * 0.1), rep(1.2, 20),
          rep(1, 10), (1 + 1:10 * 0.05))
 ## Add noise
@@ -108,7 +108,7 @@ incubation_period <- list(mean = EpiNow::covid_incubation_period[1, ]$mean,
                            max = 30)
                     
 reporting_delay <- list(mean = log(5),
-                         mean_sd = log(1.1),
+                         mean_sd = log(2),
                          sd = log(2),
                          sd_sd = log(1.2),
                          max = 30)
@@ -125,7 +125,7 @@ generation_time_defs <- EpiNow::gamma_dist_def(mean = generation_time$mean,
                                                sd_sd = generation_time$sd_sd,
                                                max_value = generation_time$max, samples = 1)
 
-generation_time_pdf <- c(0, EpiNow::dist_skel(n = 0:30, 
+generation_time_pdf <- c(0, EpiNow::dist_skel(n = 0:29, 
                         model = "gamma", 
                         params = generation_time_defs$params[[1]],
                         max_value = 30, 
@@ -146,7 +146,7 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
-simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10, initial_date = as.Date("2020-03-01"),
+simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100, initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_time_pdf,
                                           delay_def = delay_defs[10, ],
                                           incubation_def = incubation_defs[10, ],
@@ -319,7 +319,7 @@ rt_sim <- non_parametric_cases$R[, .(median = median(value), bottom = quantile(v
 rts <- data.table::data.table(
     date = seq(as.Date("2020-03-01"), 
                as.Date("2020-03-01") + lubridate::days(length(rts) - 1), by = "days"),
-    median = rts,
+    median = rts, 
     type = "Truth"
   )
 
@@ -430,6 +430,38 @@ plot <- ggplot2::ggplot(all_country_data, ggplot2::aes(x = date, col = type, fil
 
 plot
 ```
+
+* Prepare R estimates for plotting
+
+```{r}
+country_r <- purrr::map2(results, names(results), ~ .x[[2]]$R[,
+                  .(median = median(value), bottom = quantile(value, 0.025),
+                    lower = quantile(value, 0.25), upper = quantile(value, 0.75),
+                    top = quantile(value, 0.975), type = "Estimated"), by = c("date")][,region := .y])
+
+country_r <- data.table::rbindlist(country_r)[date >= as.Date("2020-03-01")]
+```
+
+* Plot R estimates (**note that the reporting delays are not based on data and so these results are for model checking only**).
+
+```{r, fig.width = 12, fig.height = 9, dpi = 400, message = FALSE, warning = FALSE}
+plot_rt_countries <- 
+  ggplot2::ggplot(country_r , ggplot2::aes(x = date, col = region, fill = region)) +
+   ggplot2::geom_linerange(ggplot2::aes(ymin = bottom, ymax = top), 
+                         alpha = 0.4, size = 1.2) +
+ ggplot2::geom_linerange(ggplot2::aes(ymin = lower, ymax = upper), 
+                         alpha = 0.8, size = 1.2) +
+  ggplot2::geom_hline(yintercept = 1, linetype = 2) + 
+  cowplot::theme_cowplot() +
+  ggplot2::theme(legend.position = "bottom") +
+  ggplot2::scale_color_brewer(palette = "Dark2") +
+  ggplot2::labs(y = "Rt", x = "Date", col = "Type") +
+  facet_wrap(~ region) +
+  ggplot2::theme(legend.position = "none")
+
+plot_rt_countries
+```
+
 
 ## Discussion
 

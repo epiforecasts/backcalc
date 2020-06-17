@@ -83,7 +83,7 @@ nowcast <- function(reported_cases, family = "poisson",
   
 # Estimate the mean delay -----------------------------------------------
   
-  mean_shift <- exp(incubation_period$mean) + exp(reporting_delay$mean)
+  mean_shift <- as.integer(exp(incubation_period$mean) + exp(reporting_delay$mean))
 
 # Add the mean delay and incubation period on as 0 case days ------------
 
@@ -97,7 +97,7 @@ nowcast <- function(reported_cases, family = "poisson",
 # Calculate smoothed prior cases ------------------------------------------
   
   shifted_reported_cases <- data.table::copy(reported_cases)[,
-                          confirm := data.table::shift(confirm, n = as.integer(mean_shift),
+                          confirm := data.table::shift(confirm, n = mean_shift,
                           type = "lead", fill = mean(data.table::last(confirm, n = 7)))][,
                           confirm := data.table::frollmean(confirm, n = prior_smoothing_window, 
                                                            align = "right", fill = data.table::last(confirm))][,
@@ -119,6 +119,7 @@ nowcast <- function(reported_cases, family = "poisson",
     cases = reported_cases$confirm,
     shifted_cases = shifted_reported_cases$confirm,
     t = length(reported_cases$date),
+    rt = length(reported_cases$date) - mean_shift,
     inc_mean_mean = incubation_period$mean,
     inc_mean_sd = incubation_period$mean_sd,
     inc_sd_mean = incubation_period$sd,
@@ -150,6 +151,8 @@ nowcast <- function(reported_cases, family = "poisson",
 
 init_fun <- function(){out <- list(
                             eta = rnorm(data$t, mean = 0, sd = 1),
+                            rho = rlnorm(1, 1.609438, 0.5),
+                            alpha =  truncnorm::rtruncnorm(1, a = 0, mean = 0, sd = 1),
                             inc_mean = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$mean, sd = incubation_period$mean_sd),
                             inc_sd = truncnorm::rtruncnorm(1, a = 0, mean = incubation_period$sd, sd = incubation_period$sd_sd),
                             rep_mean = truncnorm::rtruncnorm(1, a = 0, mean = reporting_delay$mean, sd = reporting_delay$mean_sd),
@@ -162,8 +165,10 @@ init_fun <- function(){out <- list(
                         if (estimate_rt) {
                         out$R <- array(rgamma(n = 1, shape = (rt_prior$mean / rt_prior$sd)^2, 
                                                     scale = (rt_prior$sd^2) / rt_prior$mean))
-                        out$R_eta <- rnorm(data$t, mean = 0, sd = 1)
-                        out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$mean,  
+                        out$R_eta <- rnorm(data$rt, mean = 0, sd = 1)
+                        out$R_rho <- array(rlnorm(1, 1.609438, 0.5))
+                        out$R_alpha <-  array(truncnorm::rtruncnorm(1, a = 0, mean = 0, sd = 1))
+                        out$gt_mean <- array(truncnorm::rtruncnorm(1, a = 1, mean = generation_time$mean,  
                                                              sd = generation_time$mean_sd))
                         out$gt_sd <-  array(truncnorm::rtruncnorm(1, a = 0, mean = generation_time$sd,
                                                             sd = generation_time$sd_sd))
@@ -236,7 +241,11 @@ init_fun <- function(){out <- list(
     if (estimate_rt) {
       out$R <- extract_parameter("R", 
                                  samples,
-                                 reported_cases$date)
+                                 reported_cases$date[-(1:mean_shift)])
+      
+      out$growth_rate <- extract_parameter("r", 
+                                          samples,
+                                          reported_cases$date[-(1:mean_shift)])
     }
 
     
