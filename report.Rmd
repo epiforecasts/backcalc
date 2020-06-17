@@ -146,7 +146,7 @@ incubation_defs <- EpiNow::lognorm_dist_def(mean = incubation_period$mean,
 
 ## Simulate cases with a decrease in reporting at weekends and an incease on Monday
 ## using a single sample of both distributions                                    
-simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 10, initial_date = as.Date("2020-03-01"),
+simulated_cases <- EpiNow::simulate_cases(rts, initial_cases = 100, initial_date = as.Date("2020-03-01"),
                                           generation_interval = generation_time_pdf,
                                           delay_def = delay_defs[10, ],
                                           incubation_def = incubation_defs[10, ],

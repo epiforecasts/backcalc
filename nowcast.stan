@@ -254,7 +254,7 @@ transformed parameters {
 model {
   
   // priors for noise GP
-  rho ~ lognormal(1.609438, 1); //log(5)
+  rho ~ lognormal(1.609438, 0.5); //log(5)
   alpha ~ std_normal();
   eta ~ std_normal();
 
@@ -294,8 +294,8 @@ model {
    R_eta ~ std_normal();
     
     // penalised_prior on generation interval
-    target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * t;
-    target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * t;
+    target += normal_lpdf(gt_mean | gt_mean_mean, gt_mean_sd) * rt;
+    target += normal_lpdf(gt_sd | gt_sd_mean, gt_sd_sd) * rt;
     
     // Likelihood of Rt given infections
     if (model_type) {
